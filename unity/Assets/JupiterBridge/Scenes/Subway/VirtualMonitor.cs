@@ -141,6 +141,12 @@ namespace JupiterBridge.Subway
                 (screenH - marginM * 2f) / JupiterTouchSizing.LabelScale);
 
             _tmp.ForceMeshUpdate();
+
+            Debug.Log(
+                $"[VirtualMonitor] Built. " +
+                $"Text cap={JupiterTouchSizing.MonitorTextCapHeightMm}mm " +
+                $"(fontSize={JupiterTouchSizing.MonitorTextFontSize:F1}). " +
+                $"Screen {JupiterTouchSizing.MonitorScreenWidthM*1000:F0}×{JupiterTouchSizing.MonitorScreenHeightM*1000:F0} mm");
         }
 
         Material MakeMaterial(Color c)

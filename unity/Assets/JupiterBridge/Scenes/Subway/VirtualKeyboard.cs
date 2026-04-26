@@ -119,7 +119,15 @@ namespace JupiterBridge.Subway
             }
 
             BuildBasePlate();
-            Debug.Log($"[VirtualKeyboard] Built {_keys.Count} keys");
+
+            Debug.Log(
+                $"[VirtualKeyboard] Built {_keys.Count} keys. " +
+                $"Letter cap={JupiterTouchSizing.KeyLetterCapHeightMm}mm " +
+                $"(fontSize={JupiterTouchSizing.KeyLetterFontSize:F1}), " +
+                $"Wide cap={JupiterTouchSizing.KeyWideCapHeightMm}mm " +
+                $"(fontSize={JupiterTouchSizing.KeyWideFontSize:F1}). " +
+                $"Key {JupiterTouchSizing.KeyWidthM*1000:F0}×{JupiterTouchSizing.KeyDepthM*1000:F0}×{JupiterTouchSizing.KeyHeightM*1000:F0} mm, " +
+                $"gap {JupiterTouchSizing.KeyGapM*1000:F0}mm");
         }
 
         void SpawnKey(string label, char ch, float x, float z, float width)

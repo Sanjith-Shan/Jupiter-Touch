@@ -36,34 +36,34 @@ namespace JupiterBridge.Subway
         public static float HeightMmToFontSize(float capHeightMm)
             => capHeightMm / CapHeightRatio;
 
-        // ─── Keyboard geometry ────────────────────────────────────────────
-        public const float KeyWidthM   = 0.104f;   // 104 mm
-        public const float KeyDepthM   = 0.104f;   // 104 mm
-        public const float KeyHeightM  = 0.040f;   //  40 mm tall body
-        public const float KeyGapM     = 0.020f;   //  20 mm between keys
+        // ─── Keyboard geometry (ORIGINAL physical sizes) ──────────────────
+        public const float KeyWidthM   = 0.026f;   // 26 mm
+        public const float KeyDepthM   = 0.026f;   // 26 mm
+        public const float KeyHeightM  = 0.010f;   // 10 mm tall body
+        public const float KeyGapM     = 0.005f;   //  5 mm between keys
 
-        public const float WideKeyWidthMultiplier  = 2.5f;   // Back / Enter
+        public const float WideKeyWidthMultiplier  = 2.5f;
         public const float SpaceKeyWidthMultiplier = 6.0f;
 
         public const float KeyboardTiltDegrees = 25f;
-        public const float KeyboardLabelLiftMm = 6f;         // Label hover above key top face
+        public const float KeyboardLabelLiftMm = 1.5f;
 
-        // ─── Keyboard label sizing ────────────────────────────────────────
-        public const float KeyLetterCapHeightMm  = 56f;   // Letters / digits
-        public const float KeyWideCapHeightMm    = 36f;   // Bk / Ent / space (slightly smaller)
+        // ─── Keyboard label sizing (4× bigger than the original 14/9 mm) ──
+        public const float KeyLetterCapHeightMm  = 56f;
+        public const float KeyWideCapHeightMm    = 36f;
 
         public static float KeyLetterFontSize => HeightMmToFontSize(KeyLetterCapHeightMm);
         public static float KeyWideFontSize   => HeightMmToFontSize(KeyWideCapHeightMm);
 
-        // ─── Monitor geometry ─────────────────────────────────────────────
-        public const float MonitorScreenWidthM  = 1.80f;   // 180 cm
-        public const float MonitorScreenHeightM = 1.12f;   // 112 cm (~16:10)
-        public const float MonitorScreenDepthM  = 0.080f;
-        public const float MonitorBezelM        = 0.048f;
-        public const float MonitorTextMarginM   = 0.048f;
+        // ─── Monitor geometry (ORIGINAL physical sizes) ───────────────────
+        public const float MonitorScreenWidthM  = 0.45f;
+        public const float MonitorScreenHeightM = 0.28f;
+        public const float MonitorScreenDepthM  = 0.020f;
+        public const float MonitorBezelM        = 0.012f;
+        public const float MonitorTextMarginM   = 0.012f;
 
-        // ─── Monitor text sizing ──────────────────────────────────────────
-        public const float MonitorTextCapHeightMm = 88f;   // Body text on screen
+        // ─── Monitor text sizing (4× bigger than the original 22 mm) ──────
+        public const float MonitorTextCapHeightMm = 88f;
 
         public static float MonitorTextFontSize => HeightMmToFontSize(MonitorTextCapHeightMm);
 
