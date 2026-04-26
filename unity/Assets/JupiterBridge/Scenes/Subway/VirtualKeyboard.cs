@@ -38,8 +38,8 @@ namespace JupiterBridge.Subway
         public Color labelColor     = new Color(0.95f, 0.97f, 1.00f);
         [Tooltip("Label transform scale. 0.001 means 1 TMP unit = 1 mm world.")]
         public float labelScale     = 0.001f;
-        [Tooltip("TMP fontSize in POINT units (like 12pt, 24pt). With labelScale=0.001, fontSize 24 ≈ 17 mm capital height.")]
-        public float labelFontSize  = 24f;
+        [Tooltip("TMP fontSize in POINT units (like 12pt, 24pt). With labelScale=0.001, fontSize 32 ≈ 18 mm capital height.")]
+        public float labelFontSize  = 32f;
         [Tooltip("If true, shrink the font on multi-character labels (e.g. 'space') so they fit.")]
         public bool  shrinkLongLabels = true;
         [Tooltip("Multi-char shrink factor (used when shrinkLongLabels is on).")]
