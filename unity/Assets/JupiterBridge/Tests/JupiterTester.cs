@@ -13,21 +13,30 @@
  * Setup:
  *   1. OVRHandPrefab under TrackingSpace (not RightHandAnchor), Update Root Pose ON
  *   2. Set OVRHandPrefab to Hand Right / OpenXR Hand Right
- *   3. Drag its OVRSkeleton into this script's rightHandSkeleton field
+ *   3. Drag its OVRSkeleton into this script's handSkeleton field
  *   4. Deploy to Quest 3
  */
 
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace JupiterBridge.Tests
 {
     public class JupiterTester : MonoBehaviour
     {
+        public enum Handedness { Right, Left }
+
         [Header("Meta XR")]
-        [Tooltip("Drag OVRSkeleton from OVRHandPrefab")]
-        public OVRSkeleton rightHandSkeleton;
+        [Tooltip("Which hand this tracker drives. Add ONE JupiterTester per hand " +
+                 "(typically two GameObjects in Bootstrap: HandTracker_Right and " +
+                 "HandTracker_Left), each pointed at its own OVRHandPrefab/OVRSkeleton.")]
+        public Handedness handedness = Handedness.Right;
+
+        [Tooltip("Drag the OVRSkeleton from this hand's OVRHandPrefab.")]
+        [FormerlySerializedAs("rightHandSkeleton")]
+        public OVRSkeleton handSkeleton;
 
         [Header("Contact Detection")]
         public float tipColliderRadius = 0.013f;
@@ -241,9 +250,13 @@ namespace JupiterBridge.Tests
 
         void SendContactUDP(int fingerIndex, bool active, float depth)
         {
+            // The "hand" field tells pc_bridge.py which Arduino to route the
+            // command to. Lowercase strings ("right" / "left") because that's
+            // what the Python bridge keys on (matches its bridges dict).
+            string handStr = (handedness == Handedness.Right) ? "right" : "left";
             string json = active
-                ? $"{{\"finger\":\"{FingerNames[fingerIndex]}\",\"active\":true,\"depth\":{depth:F3}}}"
-                : $"{{\"finger\":\"{FingerNames[fingerIndex]}\",\"active\":false,\"depth\":0}}";
+                ? $"{{\"hand\":\"{handStr}\",\"finger\":\"{FingerNames[fingerIndex]}\",\"active\":true,\"depth\":{depth:F3}}}"
+                : $"{{\"hand\":\"{handStr}\",\"finger\":\"{FingerNames[fingerIndex]}\",\"active\":false,\"depth\":0}}";
             UDPSender.Instance.Send(json);
         }
 
@@ -263,14 +276,14 @@ namespace JupiterBridge.Tests
 
         void ApplyHandMeshMaterial()
         {
-            if (rightHandSkeleton == null) return;
+            if (handSkeleton == null) return;
 
             // Search for SkinnedMeshRenderer on the same GameObject or parent hierarchy
             // OVRHandPrefab puts it on the same object or a child
             SkinnedMeshRenderer smr = null;
 
             // Check the skeleton's GameObject and its parent/siblings
-            var handObj = rightHandSkeleton.gameObject;
+            var handObj = handSkeleton.gameObject;
             smr = handObj.GetComponentInChildren<SkinnedMeshRenderer>();
             if (smr == null) smr = handObj.GetComponentInParent<SkinnedMeshRenderer>();
 
@@ -349,8 +362,8 @@ namespace JupiterBridge.Tests
 
         void BuildOutlineWireframe()
         {
-            if (rightHandSkeleton == null || !rightHandSkeleton.IsInitialized) return;
-            var bones = rightHandSkeleton.Bones;
+            if (handSkeleton == null || !handSkeleton.IsInitialized) return;
+            var bones = handSkeleton.Bones;
 
             Color outlineColor = OutlineIdle;
 
@@ -584,9 +597,12 @@ namespace JupiterBridge.Tests
             // Each detector is an INVISIBLE trigger collider that follows a fingertip
             // bone. Visualisation of contact happens via the outline-wireframe
             // colouring (UpdateWireframe), not via per-tip geometry.
+            // Hand prefix in the GameObject name keeps both hands' detectors
+            // distinguishable in the Hierarchy (JT_R_ThumbTip vs JT_L_ThumbTip).
+            string handPrefix = (handedness == Handedness.Right) ? "R" : "L";
             for (int i = 0; i < 6; i++)
             {
-                var go = new GameObject($"JT_{FingerNames[i]}Tip");
+                var go = new GameObject($"JT_{handPrefix}_{FingerNames[i]}Tip");
                 go.transform.SetParent(transform);
 
                 var rb = go.AddComponent<Rigidbody>();
@@ -610,14 +626,14 @@ namespace JupiterBridge.Tests
         IEnumerator BindBones()
         {
             float timeout = 10f, waited = 0f;
-            while (rightHandSkeleton == null || !rightHandSkeleton.IsInitialized)
+            while (handSkeleton == null || !handSkeleton.IsInitialized)
             {
                 waited += Time.deltaTime;
                 if (waited > timeout) { Debug.LogError("[JupiterTester] Skeleton timeout!"); yield break; }
                 yield return null;
             }
 
-            var bones = rightHandSkeleton.Bones;
+            var bones = handSkeleton.Bones;
             Debug.Log($"[JupiterTester] Skeleton: {bones.Count} bones");
             for (int b = 0; b < bones.Count; b++)
                 Debug.Log($"[JupiterTester]   [{b}] \"{bones[b].Transform.name}\"");
@@ -706,11 +722,19 @@ namespace JupiterBridge.Tests
 
         void BuildStatusPanel(Vector3 headPos, Vector3 headFwd, Vector3 headRight)
         {
-            Vector3 pos = headPos + headFwd * 0.50f + headRight * -0.35f + Vector3.up * 0.10f;
-            var go = new GameObject("FingerStatusPanel");
+            // The `headRight` arg passed in is actually the user-LEFT vector
+            // (it's Cross(up,fwd)*-1 — see InitScene). So `headRight * -0.35`
+            // puts the panel on the user's RIGHT side. For the left hand we
+            // want the panel on the user's LEFT side, hence flipping the sign.
+            float lateralSign = (handedness == Handedness.Right) ? -1f : +1f;
+            Vector3 pos = headPos + headFwd * 0.50f + headRight * (0.35f * lateralSign) + Vector3.up * 0.10f;
+            var go = new GameObject($"FingerStatusPanel_{handedness}");
             go.transform.SetParent(transform);
             var panel = go.AddComponent<FingerStatusPanel>();
-            panel.tester = this; panel.spawnPos = pos; panel.spawnFwd = headFwd;
+            panel.tester = this;
+            panel.spawnPos = pos;
+            panel.spawnFwd = headFwd;
+            panel.handLabel = (handedness == Handedness.Right) ? "RIGHT HAND" : "LEFT HAND";
         }
     }
 }

@@ -18,6 +18,7 @@ namespace JupiterBridge.Tests
         [HideInInspector] public JupiterTester tester;
         [HideInInspector] public Vector3 spawnPos;
         [HideInInspector] public Vector3 spawnFwd;
+        [HideInInspector] public string  handLabel = "RIGHT HAND";
 
         private Transform _root;
         private Canvas    _canvas;
@@ -125,7 +126,7 @@ namespace JupiterBridge.Tests
             var titleRT = titleGo.GetComponent<RectTransform>();
             titleRT.anchoredPosition = new Vector2(0, 100);
             var titleText = titleGo.AddComponent<Text>();
-            titleText.text      = "JUPITER  ·  CONTACT  TEST";
+            titleText.text      = $"JUPITER  ·  {handLabel}";
             titleText.font      = Font.CreateDynamicFontFromOSFont("Arial", 20);
             titleText.fontSize  = 20;
             titleText.fontStyle = FontStyle.Bold;
