@@ -12,6 +12,14 @@ namespace JupiterBridge.Director
     /// </summary>
     public class SceneLoader : MonoBehaviour
     {
+        // Bootstrap is identified by name. We can't use `gameObject.scene.name`
+        // because DirectorClient.Awake calls DontDestroyOnLoad, which moves this
+        // GameObject into Unity's "DontDestroyOnLoad" scene — so `scene.name`
+        // would no longer match "Bootstrap" and the keep-bootstrap check fails,
+        // causing every swap to log "Unloading the last loaded scene ... is not
+        // supported" and waste a coroutine step on a refused unload.
+        const string BootstrapSceneName = "Bootstrap";
+
         [Header("Fade overlay")]
         [Tooltip("CanvasGroup on a full-screen black Image placed in the Bootstrap scene.")]
         [SerializeField] CanvasGroup _fadePanel;
@@ -41,12 +49,16 @@ namespace JupiterBridge.Director
             // Fade to black
             yield return Fade(0f, 1f, fadeDuration * 0.5f);
 
-            // Unload all non-persistent scenes additive-loaded previously
+            // Unload all non-persistent scenes additive-loaded previously.
+            // Skip Bootstrap by NAME, not by gameObject.scene (which is
+            // "DontDestroyOnLoad" once DirectorClient marks us persistent).
+            // Also skip if the requested scene is already loaded (re-click).
             for (int i = SceneManager.sceneCount - 1; i >= 0; i--)
             {
                 Scene s = SceneManager.GetSceneAt(i);
-                if (s.name != gameObject.scene.name)  // keep Bootstrap
-                    yield return SceneManager.UnloadSceneAsync(s);
+                if (s.name == BootstrapSceneName) continue;
+                if (s.name == sceneName)         continue;
+                yield return SceneManager.UnloadSceneAsync(s);
             }
 
             // Load the new scene additively so Bootstrap persists
