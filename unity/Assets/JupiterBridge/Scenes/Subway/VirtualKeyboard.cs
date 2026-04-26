@@ -43,7 +43,7 @@ namespace JupiterBridge.Subway
         [Tooltip("If true, shrink the font on multi-character labels (e.g. 'space') so they fit.")]
         public bool  shrinkLongLabels = true;
         [Tooltip("Multi-char shrink factor (used when shrinkLongLabels is on).")]
-        [Range(0.3f, 1f)] public float longLabelShrinkV2V2 = 0.70f;
+        [Range(0.3f, 1f)] public float longLabelShrinkV2 = 0.70f;
 
         [Header("Tilt & anchor")]
         [Tooltip("Tilt the whole keyboard back by this many degrees (toward user's face).")]
