@@ -43,7 +43,7 @@ namespace JupiterBridge.Subway
         [Tooltip("If true, shrink the font on multi-character labels (e.g. 'space') so they fit.")]
         public bool  shrinkLongLabels = true;
         [Tooltip("Multi-char shrink factor (used when shrinkLongLabels is on).")]
-        [Range(0.3f, 1f)] public float longLabelShrink = 0.55f;
+        [Range(0.3f, 1f)] public float longLabelShrinkV2V2 = 0.70f;
 
         [Header("Tilt & anchor")]
         [Tooltip("Tilt the whole keyboard back by this many degrees (toward user's face).")]
@@ -83,11 +83,13 @@ namespace JupiterBridge.Subway
                 new K(",",','), new K(".",'.'),
             },
             // Control row: backspace, space, enter (plain ASCII labels — Unicode
-            // glyphs like ⌫ ⏎ aren't in the default font and render as fallback boxes)
+            // glyphs like ⌫ ⏎ aren't in the default font and render as fallback boxes).
+            // Wide keys are 2.5× normal width so the multi-char labels fit at a
+            // legible font size.
             new[] {
-                new K("Back",  '\b', 1.6f),
+                new K("Back",  '\b', 2.5f),
                 new K("space", ' ',  6.0f),
-                new K("Enter", '\n', 1.6f),
+                new K("Enter", '\n', 2.5f),
             },
         };
 
@@ -195,9 +197,10 @@ namespace JupiterBridge.Subway
             labelGo.transform.SetParent(keyParent.transform, false);
             // Position just above the top face of the body
             labelGo.transform.localPosition = new Vector3(0f, keyHeight * 0.5f + 0.0010f, 0f);
-            // Orient: text front (+Z) faces world UP, text up (+Y) faces FORWARD
-            // (away from user). Reading direction stays world +X.
-            labelGo.transform.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
+            // Rotate so text front (+Z) faces world UP and reading direction
+            // (+X) stays world +X. Previous LookRotation form had a sign error
+            // and rendered text mirrored (left↔right reversed).
+            labelGo.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             // labelScale = 0.001 → 1 TMP unit (mesh space) = 1 mm world.
             // Compensate for any non-unit scale inherited from parents in the
             // hierarchy (XR rig, scene root, etc.) so glyphs always render at
@@ -215,7 +218,7 @@ namespace JupiterBridge.Subway
             // FIXED font size — autoSizing collapses to fontSizeMin and renders garbage
             tmp.enableAutoSizing = false;
             tmp.fontSize         = (shrinkLongLabels && label.Length > 1)
-                                     ? labelPointSize * longLabelShrink
+                                     ? labelPointSize * longLabelShrinkV2
                                      : labelPointSize;
             // Disable margins/word-wrap so a single character isn't word-wrapped weirdly
             tmp.enableWordWrapping = false;
