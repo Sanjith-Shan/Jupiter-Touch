@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 
@@ -30,6 +31,10 @@ namespace JupiterBridge.Subway
         // ── Internal ──────────────────────────────────────────────────────
         TextMeshPro _tmp;
         bool        _subscribed;
+        bool        _isLiveBuffer;     // true = subscribed to KeyboardController (blink cursor)
+        string      _bufferText = "";  // most recent text from KeyboardController
+        bool        _cursorVisible;    // current blink phase
+        Coroutine   _cursorCoroutine;
 
         void Start()
         {
@@ -47,11 +52,21 @@ namespace JupiterBridge.Subway
         void TrySubscribe()
         {
             if (_subscribed) return;
-            if (!string.IsNullOrEmpty(staticText)) { OnTextChanged(staticText); _subscribed = true; return; }
+            if (!string.IsNullOrEmpty(staticText))
+            {
+                // Static-text mode (e.g. the right monitor's code preview).
+                // No cursor blink — it's a placeholder, not a typing target.
+                _isLiveBuffer = false;
+                if (_tmp != null) _tmp.text = staticText;
+                _subscribed = true;
+                return;
+            }
             if (KeyboardController.Instance == null) return;
 
+            _isLiveBuffer = true;
             KeyboardController.Instance.TextChanged += OnTextChanged;
             OnTextChanged(KeyboardController.Instance.Text);
+            _cursorCoroutine = StartCoroutine(BlinkCursor());
             _subscribed = true;
             Debug.Log("[VirtualMonitor] Subscribed to KeyboardController");
         }
@@ -60,11 +75,44 @@ namespace JupiterBridge.Subway
         {
             if (_subscribed && KeyboardController.Instance != null)
                 KeyboardController.Instance.TextChanged -= OnTextChanged;
+            if (_cursorCoroutine != null) StopCoroutine(_cursorCoroutine);
         }
 
         void OnTextChanged(string text)
         {
-            if (_tmp != null) _tmp.text = text;
+            _bufferText = text ?? "";
+            RenderText();
+        }
+
+        IEnumerator BlinkCursor()
+        {
+            var wait = new WaitForSeconds(JupiterTouchSizing.MonitorCursorBlinkSeconds);
+            while (true)
+            {
+                _cursorVisible = !_cursorVisible;
+                RenderText();
+                yield return wait;
+            }
+        }
+
+        void RenderText()
+        {
+            if (_tmp == null) return;
+            if (!_isLiveBuffer)
+            {
+                _tmp.text = _bufferText;
+                return;
+            }
+
+            // Live buffer: append a cursor character. Toggle alpha (not the
+            // character itself) so the layout never shifts when the cursor
+            // blinks. Visible: show as-is. Hidden: wrap remaining text in
+            // <alpha=#00>. Note that TMP's <alpha> tag affects everything
+            // following the tag, so we always place the cursor at the END.
+            string cursor = JupiterTouchSizing.MonitorCursorChar;
+            _tmp.text = _cursorVisible
+                ? _bufferText + cursor
+                : _bufferText + "<alpha=#00>" + cursor;
         }
 
         void AnchorToCamera()
@@ -135,6 +183,8 @@ namespace JupiterBridge.Subway
             _tmp.fontSize         = JupiterTouchSizing.MonitorTextFontSize;
             _tmp.enableWordWrapping = true;
             _tmp.overflowMode     = TextOverflowModes.Truncate;
+            // Cursor blink uses <alpha=#00> rich-text tag — ensure parsing is on.
+            _tmp.richText         = true;
 
             _tmp.rectTransform.sizeDelta = new Vector2(
                 (screenW - marginM * 2f) / JupiterTouchSizing.LabelScale,

@@ -92,6 +92,22 @@ namespace JupiterBridge.Subway
         public const float SpawnFadeDurationS = 0.35f;
         public const float SpawnRiseM         = 0.06f;
 
+        // ─── Press detection ──────────────────────────────────────────────
+        // "Primed → press" gating: a finger only fires a key press if it
+        // entered the key's collider FROM ABOVE (its world Y was above the
+        // key's top surface at OnTriggerEnter time). Resting/curled fingers
+        // already below the keyboard plane never fire.
+        //
+        // SlideTolerance forgives a glancing entry on the very top edge —
+        // if the finger enters with its Y at most this far below the top
+        // surface, it's still treated as "from above". Keeps fast taps that
+        // arrive at a slight angle from being rejected.
+        public const float KeyPressSlideToleranceM = 0.003f;   // 3 mm
+
+        // ─── Monitor cursor ──────────────────────────────────────────────
+        public const float MonitorCursorBlinkSeconds = 0.5f;
+        public const string MonitorCursorChar = "|";
+
         // ─── Layers ───────────────────────────────────────────────────────
         public const int EmsContactLayer = 6;
     }

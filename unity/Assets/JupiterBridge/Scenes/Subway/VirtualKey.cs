@@ -5,16 +5,23 @@ using UnityEngine;
 namespace JupiterBridge.Subway
 {
     /// <summary>
-    /// One key on the virtual keyboard. Press detection uses a SHARED arbitration
-    /// step so each finger can only be "claimed" by ONE key at any moment — the
-    /// key it has penetrated deepest. Other keys ignore that finger entirely,
-    /// which prevents one fingertip from triggering multiple adjacent keys at once.
+    /// One key on the virtual keyboard. Press detection uses TWO layers:
     ///
-    /// Hysteresis (press at pressThreshold, release at releaseThreshold) prevents
-    /// jitter retrigger.
+    /// 1. Per-(finger,key) "primed → press" gating. A press only fires when a
+    ///    finger that ENTERED the key's collider FROM ABOVE (its world Y was
+    ///    above the key's top surface at OnTriggerEnter time) descends through
+    ///    the press threshold. Resting/curled fingers below the keyboard plane
+    ///    enter from below or from the side, are not primed, and so never fire.
+    ///    This is what stops "press one key with index, get 5 letters typed
+    ///    because ring/pinky/palm were also below the surface".
     ///
-    /// EMS firing happens automatically via the existing layer-6 → FingerContactDetector
-    /// → UDPSender pipeline. This component does no networking.
+    /// 2. Shared arbitration so each finger only counts toward ONE key per
+    ///    frame (the deepest one). Prevents one fingertip whose collider
+    ///    overlaps two adjacent keys from firing both.
+    ///
+    /// EMS firing happens automatically via the existing layer-6 →
+    /// FingerContactDetector → UDPSender pipeline. This component does no
+    /// networking.
     /// </summary>
     [RequireComponent(typeof(BoxCollider))]
     public class VirtualKey : MonoBehaviour
@@ -27,6 +34,9 @@ namespace JupiterBridge.Subway
 
         [Header("Press tuning (depth normalized 0..1; FingerContactDetector.maxDepthMetres = 0.03 m)")]
         [Range(0.05f, 1f)] public float pressThreshold   = 0.30f;
+
+        [Tooltip("Legacy field — release is now driven by OnTriggerExit, not depth. " +
+                 "Kept for serialization compatibility.")]
         [Range(0f, 1f)]    public float releaseThreshold = 0.08f;
 
         [Header("Visual feedback")]
@@ -38,10 +48,24 @@ namespace JupiterBridge.Subway
         [Range(0.7f, 1f)] public float pressedYScale = 0.85f;
 
         // ── runtime ────────────────────────────────────────────────────────
-        readonly HashSet<FingerContactDetector> _contacting = new HashSet<FingerContactDetector>();
+
+        /// <summary>
+        /// Per-(finger,key) entry record. Created on OnTriggerEnter; deleted
+        /// on OnTriggerExit. `primed` is locked at entry time; `pressed` flips
+        /// to true the first time the finger crosses the press threshold,
+        /// guaranteeing exactly one fire per entry.
+        /// </summary>
+        struct EntryState
+        {
+            public bool primed;   // entered from above the key's top surface
+            public bool pressed;  // already fired OnKeyPressed during this entry
+        }
+
+        readonly Dictionary<FingerContactDetector, EntryState> _contacting
+            = new Dictionary<FingerContactDetector, EntryState>();
+
         BoxCollider _box;
         Material    _mat;
-        bool        _pressed;
         Vector3     _restScale;
 
         public event Action<char> OnKeyPressed;
@@ -77,15 +101,27 @@ namespace JupiterBridge.Subway
 
         void OnTriggerEnter(Collider other)
         {
-            // The Rigidbody might be on a parent of the collider, search up.
             var det = other.GetComponentInParent<FingerContactDetector>();
-            if (det != null) _contacting.Add(det);
+            if (det == null || _contacting.ContainsKey(det)) return;
+
+            // Decide whether this finger is "primed" — i.e. did it enter
+            // through the top of the key from above. We check the finger's
+            // world Y against the key's top-face world Y. SlideTolerance
+            // forgives a glancing entry that just barely dips into the side
+            // of the key from above so fast taps that come in at an angle
+            // still count.
+            float keyTopY = transform.position.y + (transform.lossyScale.y * 0.5f);
+            float fingerY = det.transform.position.y;
+            bool primed   = fingerY >= keyTopY - JupiterTouchSizing.KeyPressSlideToleranceM;
+
+            _contacting[det] = new EntryState { primed = primed, pressed = false };
         }
 
         void OnTriggerExit(Collider other)
         {
             var det = other.GetComponentInParent<FingerContactDetector>();
-            if (det != null) _contacting.Remove(det);
+            if (det == null) return;
+            _contacting.Remove(det);
         }
 
         void Update()
@@ -98,17 +134,31 @@ namespace JupiterBridge.Subway
             }
 
             // Defensive: prune destroyed detectors
-            _contacting.RemoveWhere(d => d == null);
+            PruneDestroyedFingers();
 
-            // Compute max depth across fingers we OWN (per arbitration)
+            // Compute max depth across fingers we OWN (per arbitration). This
+            // drives the visual state (color/scale) so the user gets feedback
+            // for ANY contacting finger, primed or not.
             float maxDepth = 0f;
-            foreach (var det in _contacting)
+            FingerContactDetector firingFinger = null;
+            float firingDepth = 0f;
+            foreach (var kv in _contacting)
             {
+                var det = kv.Key;
                 if (!OwnsFinger(det)) continue;
-                if (det.ContactDepth > maxDepth) maxDepth = det.ContactDepth;
+                float d = det.ContactDepth;
+                if (d > maxDepth) maxDepth = d;
+
+                // Track the deepest PRIMED finger that hasn't fired yet —
+                // that's the press candidate for this frame.
+                if (kv.Value.primed && !kv.Value.pressed && d >= pressThreshold && d > firingDepth)
+                {
+                    firingFinger = det;
+                    firingDepth  = d;
+                }
             }
 
-            // ── Visual: color
+            // ── Visual: colour
             Color target;
             if (maxDepth <= 0f)                      target = restColor;
             else if (maxDepth < releaseThreshold)    target = hoverColor;
@@ -124,21 +174,34 @@ namespace JupiterBridge.Subway
             float yTarget = Mathf.Lerp(_restScale.y, _restScale.y * pressedYScale, pressFraction);
             transform.localScale = new Vector3(_restScale.x, yTarget, _restScale.z);
 
-            // ── Press / re-arm with hysteresis
-            if (!_pressed && maxDepth >= pressThreshold)
+            // ── Fire one press per primed entry, ever. After firing, the
+            //    entry's pressed flag stays true until the finger leaves
+            //    the trigger (OnTriggerExit). To get a second press of this
+            //    same key the finger has to lift off and come back down —
+            //    the natural "double-tap" motion.
+            if (firingFinger != null)
             {
-                _pressed = true;
+                var entry = _contacting[firingFinger];
+                entry.pressed = true;
+                _contacting[firingFinger] = entry;
                 Fire();
-            }
-            else if (_pressed && maxDepth < releaseThreshold)
-            {
-                _pressed = false;
             }
         }
 
         bool OwnsFinger(FingerContactDetector finger)
         {
             return _winnerForFinger.TryGetValue(finger, out var w) && w == this;
+        }
+
+        void PruneDestroyedFingers()
+        {
+            // Dictionary doesn't have RemoveWhere; collect-then-remove.
+            List<FingerContactDetector> stale = null;
+            foreach (var k in _contacting.Keys)
+            {
+                if (k == null) (stale ??= new List<FingerContactDetector>()).Add(k);
+            }
+            if (stale != null) foreach (var k in stale) _contacting.Remove(k);
         }
 
         // ── Arbitration: assign each contacting finger to its deepest key ──
@@ -151,8 +214,8 @@ namespace JupiterBridge.Subway
             foreach (var key in AllInstances)
             {
                 if (key == null) continue;
-                key._contacting.RemoveWhere(d => d == null);
-                foreach (var f in key._contacting)
+                key.PruneDestroyedFingers();
+                foreach (var f in key._contacting.Keys)
                     contestedFingers.Add(f);
             }
 
@@ -165,7 +228,7 @@ namespace JupiterBridge.Subway
 
                 foreach (var key in AllInstances)
                 {
-                    if (key == null || !key._contacting.Contains(finger)) continue;
+                    if (key == null || !key._contacting.ContainsKey(finger)) continue;
                     float d = key.ComputeRawPenetration(finger);
                     if (d > deepestDist) { deepestDist = d; deepestKey = key; }
                 }
