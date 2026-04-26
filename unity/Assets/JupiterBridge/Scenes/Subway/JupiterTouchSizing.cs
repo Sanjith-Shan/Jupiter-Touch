@@ -104,6 +104,15 @@ namespace JupiterBridge.Subway
         // arrive at a slight angle from being rejected.
         public const float KeyPressSlideToleranceM = 0.003f;   // 3 mm
 
+        // Cooldown after a press, applied to subsequent press attempts. The
+        // "same hand" window is much wider than "cross hand" because real
+        // typing rarely requires <80 ms between two same-hand keys, while
+        // alternating hands at 100 WPM produces genuine ~50 ms gaps.
+        // Anything faster than the same-hand cooldown is treated as
+        // finger-curl noise from the user's other (non-typing) fingers.
+        public const float KeyPressSameHandCooldownMs  = 80f;
+        public const float KeyPressCrossHandCooldownMs = 25f;
+
         // ─── Monitor cursor ──────────────────────────────────────────────
         public const float MonitorCursorBlinkSeconds = 0.5f;
         public const string MonitorCursorChar = "|";

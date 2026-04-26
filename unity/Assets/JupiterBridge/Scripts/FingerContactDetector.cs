@@ -16,6 +16,13 @@ namespace JupiterBridge
     {
         [HideInInspector] public string fingerName;
 
+        // Set by JupiterTester at detector creation time. Used by
+        // KeyboardController's press cooldown to apply a stricter window
+        // when the previous press came from the SAME hand (more likely to
+        // be finger-curl noise) than the OTHER hand (more likely a genuine
+        // cross-hand typing alternation).
+        [HideInInspector] public bool isLeftHand;
+
         public bool  IsContacting   { get; private set; }
         public float ContactDepth   { get; private set; }
 

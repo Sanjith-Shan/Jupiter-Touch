@@ -21,15 +21,45 @@ namespace JupiterBridge.Subway
 
         readonly StringBuilder _buffer = new StringBuilder();
 
+        // Cooldown state for the press gate. Time.time of the last accepted
+        // press, and which hand it came from. Initialised to a far-past
+        // value so the first press of every session always passes.
+        float _lastPressTime    = -1000f;
+        bool  _lastPressLeftHand;
+
         void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
         }
 
-        /// <summary>Called by VirtualKey on press. Special chars: '\b' = backspace, '\n' = enter, ' ' = space.</summary>
-        public void HandleKeyPress(char c)
+        /// <summary>
+        /// Called by VirtualKey on press. Hand-aware cooldown gate filters
+        /// out near-simultaneous fires from the user's other (non-typing)
+        /// fingers — same-hand window is wider than cross-hand because
+        /// real typing rarely produces &lt;80 ms gaps within one hand.
+        /// Special chars: '\b' = backspace, '\n' = enter, ' ' = space.
+        /// </summary>
+        public void HandleKeyPress(char c, bool isLeftHand)
         {
+            float now = Time.time;
+            float dt  = now - _lastPressTime;
+            bool sameHand = (isLeftHand == _lastPressLeftHand);
+            float cooldownMs = sameHand
+                ? JupiterTouchSizing.KeyPressSameHandCooldownMs
+                : JupiterTouchSizing.KeyPressCrossHandCooldownMs;
+
+            if (dt * 1000f < cooldownMs)
+            {
+                Debug.Log(
+                    $"[KeyboardController] Rejected '{c}' — {dt*1000f:F0} ms since last " +
+                    $"({(sameHand ? "same" : "cross")}-hand cooldown {cooldownMs:F0} ms)");
+                return;
+            }
+
+            _lastPressTime    = now;
+            _lastPressLeftHand = isLeftHand;
+
             if (c == '\b')
             {
                 if (_buffer.Length > 0) _buffer.Length -= 1;

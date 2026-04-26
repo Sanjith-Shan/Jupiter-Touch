@@ -184,7 +184,7 @@ namespace JupiterBridge.Subway
                 var entry = _contacting[firingFinger];
                 entry.pressed = true;
                 _contacting[firingFinger] = entry;
-                Fire();
+                Fire(firingFinger);
             }
         }
 
@@ -253,11 +253,14 @@ namespace JupiterBridge.Subway
 
         // ──────────────────────────────────────────────────────────────────
 
-        void Fire()
+        void Fire(FingerContactDetector finger)
         {
             OnKeyPressed?.Invoke(keyChar);
             if (KeyboardController.Instance != null)
-                KeyboardController.Instance.HandleKeyPress(keyChar);
+            {
+                bool leftHand = finger != null && finger.isLeftHand;
+                KeyboardController.Instance.HandleKeyPress(keyChar, leftHand);
+            }
         }
 
         void ApplyColor(Color c)

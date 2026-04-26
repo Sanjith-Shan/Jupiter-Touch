@@ -615,6 +615,7 @@ namespace JupiterBridge.Tests
                 det.fingerName       = FingerNames[i];
                 det.maxDepthMetres   = maxDepthMetres;
                 det.contactLayerIndex = ContactLayer;
+                det.isLeftHand       = (handedness == Handedness.Left);
                 _detectors[i] = det;
             }
         }
