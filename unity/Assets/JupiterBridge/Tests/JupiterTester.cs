@@ -76,12 +76,11 @@ namespace JupiterBridge.Tests
                  "90 Hz is fine in practice.")]
         public float emsSendRate = 90f;
 
-        [Tooltip("Skip continuous intensity updates whose depth differs from " +
-                 "the last sent value by less than this. 0.03 = 3 %% of the " +
-                 "depth range. A steady grip on a held object produces " +
-                 "near-constant depth → near-zero serial traffic, leaving " +
-                 "headroom for state-change edges to fire instantly.")]
-        [Range(0f, 0.2f)] public float emsDepthDeltaThreshold = 0.03f;
+        // Depth-delta threshold for skipping continuous EMS updates lives
+        // in JupiterTouchSizing.EmsDepthDeltaThreshold — it's a const so
+        // tweaking the value actually takes effect on existing scene
+        // instances (Unity persists serialized field values, which would
+        // override a code default change here).
 
         [Header("Passthrough")]
         public bool startWithPassthrough = true;
@@ -273,7 +272,7 @@ namespace JupiterBridge.Tests
                 {
                     if (!IsContacting[i]) continue;
                     float d = ContactDepth[i];
-                    if (Mathf.Abs(d - _lastSentDepth[i]) < emsDepthDeltaThreshold) continue;
+                    if (Mathf.Abs(d - _lastSentDepth[i]) < JupiterTouchSizing.EmsDepthDeltaThreshold) continue;
                     SendContactUDP(i, true, d);
                     _lastSentDepth[i] = d;
                 }
@@ -300,6 +299,28 @@ namespace JupiterBridge.Tests
                 for (int i = 0; i < 6; i++)
                     SendContactUDP(i, false, 0f);
             }
+        }
+
+        /// <summary>
+        /// Fire OFFs immediately when the app pauses (HMD unmount, focus
+        /// loss, app backgrounded). Without this, Update() stops running
+        /// but the Arduino's last-received pot value stays active until
+        /// the firmware's 15-second silence timeout — too long to be
+        /// holding stim on the user's skin. Both hands' JupiterTester
+        /// instances fire independently; each Arduino goes quiet within
+        /// ~50 ms via its own bridge port.
+        /// </summary>
+        void OnApplicationPause(bool pause)
+        {
+            if (!pause) return;
+            if (!enableEMSBridge || UDPSender.Instance == null) return;
+            for (int i = 0; i < 6; i++)
+            {
+                if (_wasActive[i]) SendContactUDP(i, false, 0f);
+                _wasActive[i]     = false;
+                _lastSentDepth[i] = 0f;
+            }
+            Debug.Log($"[JupiterTester:{handedness}] App paused — fired OFFs");
         }
 
         // ══════════════════════════════════════════════════════════════════

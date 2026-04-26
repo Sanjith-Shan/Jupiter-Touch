@@ -104,6 +104,22 @@ namespace JupiterBridge.Subway
         // arrive at a slight angle from being rejected.
         public const float KeyPressSlideToleranceM = 0.003f;   // 3 mm
 
+        // ─── EMS update gating ────────────────────────────────────────────
+        // Skip a continuous-update send if the new depth differs from the
+        // last-sent value by less than this. Dual purpose:
+        //   1) Throughput: 6-finger phone grip × 90 Hz = 540 cmd/sec, well
+        //      above the 19200-baud serial budget (~240 cmd/sec). The filter
+        //      keeps a steady grip near zero traffic so commands always
+        //      reach the Arduino in real time.
+        //   2) Comfort: OVR Quest 3 hand-tracking jitter at the fingertips
+        //      is ~3-5 mm RMS, which without filtering produces depth
+        //      ripple ~0.05–0.10 even when the user holds perfectly still.
+        //      Threshold above that ripple → EMS feels like a steady stim,
+        //      not a flickering 10-30 Hz micro-pulse.
+        // 0.05 is chosen to absorb tracking noise while keeping deliberate
+        // pressure changes (e.g. squeezing a held phone harder) responsive.
+        public const float EmsDepthDeltaThreshold = 0.05f;
+
         // Cooldown after a press, applied to subsequent press attempts. The
         // "same hand" window is much wider than "cross hand" because real
         // typing rarely requires <80 ms between two same-hand keys, while

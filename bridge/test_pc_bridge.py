@@ -365,6 +365,50 @@ class PhoneHoldingScenarioTest(unittest.TestCase):
             left_channels.add(ch)
         self.assertEqual(left_channels, {2, 3})
 
+    def test_hmd_unmount_releases_both_arduinos(self):
+        """Unity's OnApplicationPause(true) handler (HMD unmount, app to
+        background, focus loss) sends per-finger active:false events for
+        ALL 6 fingers from BOTH hands as a safety release. The bridge
+        must convert each into a CxOFF command and route to the right
+        Arduino, with no cross-talk."""
+        right = FakeHandBridge("right")
+        left  = FakeHandBridge("left")
+        router = pc_bridge.JupiterRouter({"right": right, "left": left})
+
+        # Set up some active contacts first (right hand gripping phone,
+        # left hand also has a key pressed)
+        for f in ["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm"]:
+            router.handle_contact({"hand": "right", "finger": f, "active": True, "depth": 0.4})
+        router.handle_contact({"hand": "left", "finger": "Index", "active": True, "depth": 0.5})
+
+        right_cmds_before_release = len(right.sent)
+        left_cmds_before_release  = len(left.sent)
+
+        # Simulate the OnApplicationPause(true) burst — both JupiterTester
+        # instances fire OFFs for all 6 fingers.
+        for f in ["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm"]:
+            router.handle_contact({"hand": "right", "finger": f, "active": False, "depth": 0.0})
+            router.handle_contact({"hand": "left",  "finger": f, "active": False, "depth": 0.0})
+
+        # Right Arduino: 6 OFFs appended after the grip ONs
+        right_off_cmds = right.sent[right_cmds_before_release:]
+        self.assertEqual(len(right_off_cmds), 6)
+        for cmd in right_off_cmds:
+            self.assertRegex(cmd, r"^C[1-6]OFF$")
+        # All 6 channels covered exactly once
+        self.assertEqual(
+            sorted(int(c[1]) for c in right_off_cmds),
+            [1, 2, 3, 4, 5, 6])
+
+        # Left Arduino: 6 OFFs appended after the typing ON
+        left_off_cmds = left.sent[left_cmds_before_release:]
+        self.assertEqual(len(left_off_cmds), 6)
+        for cmd in left_off_cmds:
+            self.assertRegex(cmd, r"^C[1-6]OFF$")
+        self.assertEqual(
+            sorted(int(c[1]) for c in left_off_cmds),
+            [1, 2, 3, 4, 5, 6])
+
     def test_serial_command_format_matches_firmware_parser(self):
         """Every command shape the bridge can produce is something the
         Arduino firmware's processCommand() will parse correctly. Cross-
