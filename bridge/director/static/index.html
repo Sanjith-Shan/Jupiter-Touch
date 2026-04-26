@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Jupiter Touch — Director Console</title>
+  <!-- Inline SVG favicon silences the otherwise harmless /favicon.ico 404
+       that confuses people debugging the dashboard in DevTools. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%237070ee'/%3E%3C/svg%3E" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -139,8 +142,12 @@
       font-weight: 500;
       transition: background .15s, border-color .15s;
     }
-    .scene-btn:hover  { background: #28283c; border-color: #5555aa; }
+    .scene-btn:hover:not(.is-disabled) { background: #28283c; border-color: #5555aa; }
     .scene-btn.active { background: #1e1e40; border-color: #7070ee; }
+    .scene-btn.is-disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
     .scene-btn .badge {
       font-size: 11px;
       background: #2e2e4a;
@@ -165,13 +172,13 @@
       text-align: left;
       transition: background .15s, border-color .15s;
     }
-    .event-btn:hover:not(:disabled) { background: #25253a; border-color: #4a4a7a; color: #e0e0f0; }
-    .event-btn:disabled, .event-btn.disabled {
+    .event-btn:hover:not(.is-disabled) { background: #25253a; border-color: #4a4a7a; color: #e0e0f0; }
+    .event-btn.is-disabled {
       opacity: .35;
       cursor: not-allowed;
     }
     .event-btn.danger { color: #d88080; border-color: #4a2222; }
-    .event-btn.danger:hover:not(:disabled) { background: #2a1818; border-color: #804040; color: #ffaaaa; }
+    .event-btn.danger:hover:not(.is-disabled) { background: #2a1818; border-color: #804040; color: #ffaaaa; }
 
     /* log */
     #log-area {

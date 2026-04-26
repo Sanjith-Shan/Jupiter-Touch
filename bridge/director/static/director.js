@@ -173,12 +173,20 @@ function buildSceneButtons() {
 function updateSceneButtons() {
   const btns = sceneBtns.querySelectorAll(".scene-btn");
   btns.forEach(btn => {
-    btn.disabled = !questConnected;
+    // CSS class only — never set the HTML `disabled` attribute. Disabled
+    // buttons swallow click events silently, which makes "nothing happens
+    // when I click" impossible to diagnose. Click handler does the gating
+    // and logs a reason so the user always sees feedback.
+    btn.classList.toggle("is-disabled", !questConnected);
     btn.classList.toggle("active", btn.dataset.name === activeScene);
   });
 }
 
 function loadScene(scene) {
+  if (!questConnected) {
+    appendLog(`Cannot load ${scene.name} — Quest not connected (status dot must be green)`, "error");
+    return;
+  }
   send({ type: "scene.load", name: scene.name, fade: scene.fade });
   activeScene = scene.name;
   updateSceneButtons();
@@ -204,12 +212,20 @@ function updateEventButtons() {
   btns.forEach(btn => {
     const scope = btn.dataset.scope;
     const inScope = !scope || scope === activeScene;
-    btn.disabled = !questConnected || !inScope;
-    btn.classList.toggle("disabled", !inScope);
+    // Same as scene buttons — class only, no HTML `disabled` attribute.
+    btn.classList.toggle("is-disabled", !questConnected || !inScope);
   });
 }
 
 function triggerEvent(ev) {
+  if (!questConnected) {
+    appendLog(`Cannot trigger ${ev.id} — Quest not connected`, "error");
+    return;
+  }
+  if (ev.scope && ev.scope !== activeScene) {
+    appendLog(`Cannot trigger ${ev.id} — current scene is ${activeScene || "(none)"}, requires ${ev.scope}. Click ${ev.scope} first.`, "error");
+    return;
+  }
   send({ type: "event.trigger", id: ev.id });
 }
 
