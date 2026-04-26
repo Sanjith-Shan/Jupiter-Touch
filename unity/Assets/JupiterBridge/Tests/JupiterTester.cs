@@ -121,6 +121,14 @@ namespace JupiterBridge.Tests
         [System.NonSerialized] public bool[]  IsContacting = new bool[6];
         [System.NonSerialized] public float[] ContactDepth = new float[6];
 
+        /// <summary>
+        /// Bone Transform we treat as the palm anchor. May be null briefly
+        /// at startup before BindBones has run. Used by held-object widgets
+        /// (e.g. VirtualPhone) to attach themselves to the user's hand.
+        /// </summary>
+        public Transform PalmBone => _bonePivots != null && _bonePivots.Length > 5
+            ? _bonePivots[5] : null;
+
         // ── Private ────────────────────────────────────────────────────────
         private Transform[]             _bonePivots = new Transform[6];
         private FingerContactDetector[] _detectors  = new FingerContactDetector[6];

@@ -73,6 +73,7 @@ namespace JupiterBridge.Subway
             {
                 case "spawn_monitors": SpawnMonitors(); break;
                 case "spawn_keyboard": SpawnKeyboard(); break;
+                case "spawn_phone":    SpawnPhone();    break;
                 case "reset_subway":   ResetSubway();   break;
                 default:
                     Debug.Log($"[SubwaySceneController] Unhandled event: {msg.id}");
@@ -167,6 +168,24 @@ namespace JupiterBridge.Subway
             StartCoroutine(SlideInFade(go.transform, pos));
 
             Debug.Log($"[SubwaySceneController] Spawned Keyboard @ {pos}");
+        }
+
+        void SpawnPhone()
+        {
+            if (HasSpawned("Phone"))
+            {
+                Debug.Log("[SubwaySceneController] Phone already spawned");
+                return;
+            }
+
+            // No seat-frame placement — VirtualPhone parents itself to the
+            // user's hand, so the spawn position here is just temporary
+            // until its Start coroutine attaches it.
+            var go = new GameObject("Phone");
+            go.AddComponent<VirtualPhone>();
+            _spawned.Add(go);
+
+            Debug.Log("[SubwaySceneController] Spawned Phone (will attach to right hand)");
         }
 
         void ResetSubway()

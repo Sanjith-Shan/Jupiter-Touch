@@ -117,6 +117,25 @@ namespace JupiterBridge.Subway
         public const float MonitorCursorBlinkSeconds = 0.5f;
         public const string MonitorCursorChar = "|";
 
+        // ─── Phone widget ─────────────────────────────────────────────────
+        // Roughly iPhone 15 Pro dimensions in metres.
+        public const float PhoneWidthM     = 0.072f;   // 72 mm
+        public const float PhoneLengthM    = 0.146f;   // 146 mm
+        public const float PhoneThicknessM = 0.008f;   // 8 mm
+        public const float PhoneScreenInsetM = 0.004f; // bezel around screen
+
+        // Local-space offset from the palm bone where the phone parent goes.
+        // The palm bone's orientation depends on OVR's skeleton convention,
+        // so this is an empirical default — adjust if the phone spawns
+        // sideways or floating away from the palm. Local axes:
+        //   x = across the palm (thumb to pinky direction-ish)
+        //   y = up the fingers (toward fingertips)
+        //   z = perpendicular to palm (out of the palm flesh)
+        public static readonly UnityEngine.Vector3 PhonePalmLocalOffset
+            = new UnityEngine.Vector3(0f, 0.04f, 0.025f);
+        public static readonly UnityEngine.Vector3 PhonePalmLocalEuler
+            = new UnityEngine.Vector3(0f, 0f, 0f);
+
         // ─── Layers ───────────────────────────────────────────────────────
         public const int EmsContactLayer = 6;
     }
