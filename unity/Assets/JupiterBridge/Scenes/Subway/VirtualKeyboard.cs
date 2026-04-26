@@ -82,14 +82,12 @@ namespace JupiterBridge.Subway
                 new K("B",'b'), new K("N",'n'), new K("M",'m'),
                 new K(",",','), new K(".",'.'),
             },
-            // Control row: backspace, space, enter (plain ASCII labels — Unicode
-            // glyphs like ⌫ ⏎ aren't in the default font and render as fallback boxes).
-            // Wide keys are 2.5× normal width so the multi-char labels fit at a
-            // legible font size.
+            // Control row. Short ASCII labels chosen so they fit comfortably at
+            // ~70% of the letter font size on 2.5× width keys.
             new[] {
-                new K("Back",  '\b', 2.5f),
+                new K("Bk",    '\b', 2.5f),
                 new K("space", ' ',  6.0f),
-                new K("Enter", '\n', 2.5f),
+                new K("Ent",   '\n', 2.5f),
             },
         };
 
@@ -223,12 +221,12 @@ namespace JupiterBridge.Subway
             // Disable margins/word-wrap so a single character isn't word-wrapped weirdly
             tmp.enableWordWrapping = false;
             tmp.overflowMode       = TextOverflowModes.Overflow;
-            // sizeDelta in TMP-units. With labelScale=0.001, 1 TMP unit = 1 mm.
-            //   World rect (m) = sizeDelta * labelScale
-            //   For a 26 mm key: sizeDelta = 26 * 0.95 = 24.7 TMP units
-            tmp.rectTransform.sizeDelta = new Vector2(
-                (width    / labelScale) * 0.95f,
-                (keyDepth / labelScale) * 0.95f);
+            // Use a generously oversized rect so a fontSize=60 character
+            // (33 mm cap height) never clips on a 26 mm key. With Overflow
+            // mode the text simply extends past the rect bounds; the visible
+            // result is still centered on the key.
+            float rectMm = Mathf.Max(width / labelScale, 200f);
+            tmp.rectTransform.sizeDelta = new Vector2(rectMm, 200f);
 
             // Force the SDF mesh to regenerate now that all properties are set —
             // some Unity / TMP versions otherwise wait until next frame and

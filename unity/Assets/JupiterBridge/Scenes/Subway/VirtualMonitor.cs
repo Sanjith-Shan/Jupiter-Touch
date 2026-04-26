@@ -5,62 +5,87 @@ namespace JupiterBridge.Subway
 {
     /// <summary>
     /// A floating monitor that displays the current text from KeyboardController.
-    /// Built procedurally on Start: a thin black panel + bezel + a TextMeshPro
-    /// element on the front face.
     ///
-    /// Optionally puts the bezel on layer 6 so touching the monitor's frame
-    /// fires a mild EMS pulse.
+    /// Structure:
+    ///   • This GameObject (positioned + rotated to face the user)
+    ///     ├── Bezel  — flat dark cube; sits BEHIND the screen face. Layer 6 if
+    ///     │            emsTouchableBezel is on so brushing it fires EMS.
+    ///     ├── Screen — thin emissive panel IN FRONT of the bezel, visible to user.
+    ///     └── Text   — TMP element rendered just in front of the screen.
     ///
-    /// Auto-anchors itself in front of the camera at scene start (similar to
-    /// VirtualKeyboard) so you don't have to manually position it.
+    /// Subscription: in case VirtualKeyboard's KeyboardController doesn't exist
+    /// at this Start (e.g. monitor spawned before keyboard), the subscription
+    /// is retried each Update until it connects.
     /// </summary>
     public class VirtualMonitor : MonoBehaviour
     {
         [Header("Geometry (metres)")]
         public float screenWidth    = 0.45f;
-        public float screenHeight   = 0.28f;   // ~16:10
+        public float screenHeight   = 0.28f;
         public float screenDepth    = 0.020f;
         public float bezelThickness = 0.012f;
 
         [Header("Display")]
         [Tooltip("If empty, subscribes to KeyboardController.Instance text.")]
         [TextArea(3, 8)] public string staticText = "";
-        public Color textColor    = new Color(0.85f, 1.00f, 0.95f);
-        public Color screenColor  = new Color(0.04f, 0.05f, 0.06f);
-        public Color bezelColor   = new Color(0.12f, 0.12f, 0.14f);
+        public Color textColor   = new Color(0.85f, 1.00f, 0.95f);
+        public Color screenColor = new Color(0.04f, 0.05f, 0.06f);
+        public Color bezelColor  = new Color(0.12f, 0.12f, 0.14f);
 
         [Header("Text sizing")]
-        [Tooltip("Transform scale for the text element (1 TMP unit = N metres). 0.001 → 1 mm per unit.")]
-        public float labelScale = 0.001f;
-        [Tooltip("TMP fontSize (point units). With labelScale=0.001, fontSize 32 ≈ 18 mm character height.")]
-        public float labelPointSize = 32f;
+        [Tooltip("Transform scale for the text element. 0.001 → 1 TMP unit = 1 mm world.")]
+        public float labelScale     = 0.001f;
+        [Tooltip("TMP fontSize (point units). With labelScale=0.001, fontSize 36 ≈ 20 mm character height.")]
+        public float labelPointSize = 36f;
 
         [Header("EMS")]
-        [Tooltip("Put the bezel on layer 6 so touching the monitor's frame fires EMS.")]
         public bool emsTouchableBezel = true;
         public int  contactLayer      = 6;
 
         [Header("Auto-anchor (camera-relative)")]
         public bool    autoAnchorToCamera = true;
-        [Tooltip("Offset from camera: x = right, y = up, z = forward (metres).")]
         public Vector3 cameraAnchorOffset = new Vector3(0.00f, 0.10f, 0.85f);
 
         TextMeshPro _tmp;
+        bool        _subscribed;
+
+        // ──────────────────────────────────────────────────────────────────
 
         void Start()
         {
             if (autoAnchorToCamera) AnchorToCamera();
             BuildMonitor();
+            TrySubscribe();
+        }
 
-            if (string.IsNullOrEmpty(staticText) && KeyboardController.Instance != null)
-            {
-                KeyboardController.Instance.TextChanged += OnTextChanged;
-                OnTextChanged(KeyboardController.Instance.Text);
-            }
-            else
-            {
-                OnTextChanged(staticText);
-            }
+        void Update()
+        {
+            // Retry subscription if we missed it on Start (e.g. keyboard
+            // spawned after this monitor)
+            if (!_subscribed) TrySubscribe();
+        }
+
+        void TrySubscribe()
+        {
+            if (_subscribed) return;
+            if (!string.IsNullOrEmpty(staticText)) { OnTextChanged(staticText); _subscribed = true; return; }
+            if (KeyboardController.Instance == null) return;
+
+            KeyboardController.Instance.TextChanged += OnTextChanged;
+            OnTextChanged(KeyboardController.Instance.Text);
+            _subscribed = true;
+            Debug.Log("[VirtualMonitor] Subscribed to KeyboardController");
+        }
+
+        void OnDestroy()
+        {
+            if (KeyboardController.Instance != null && _subscribed)
+                KeyboardController.Instance.TextChanged -= OnTextChanged;
+        }
+
+        void OnTextChanged(string text)
+        {
+            if (_tmp != null) _tmp.text = text;
         }
 
         void AnchorToCamera()
@@ -77,55 +102,48 @@ namespace JupiterBridge.Subway
                 + Vector3.up * cameraAnchorOffset.y
                 + fwd * cameraAnchorOffset.z;
 
-            // Face the user
+            // Monitor's local +Z faces the user (LookRotation aligns local +Z
+            // with the supplied forward; we pass -fwd so local +Z = -fwd =
+            // backward along the user's gaze = TOWARD them.)
             transform.rotation = Quaternion.LookRotation(-fwd, Vector3.up);
-        }
-
-        void OnDestroy()
-        {
-            if (KeyboardController.Instance != null)
-                KeyboardController.Instance.TextChanged -= OnTextChanged;
-        }
-
-        void OnTextChanged(string text)
-        {
-            if (_tmp != null) _tmp.text = text;
         }
 
         void BuildMonitor()
         {
-            // ── Bezel (slightly larger box behind the screen) ────────────
+            // Local +Z direction faces the user. Bezel sits at the back,
+            // screen face is in front of it.
+
+            // ── Bezel (slightly larger backing, behind the screen) ──────
             var bezel = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            bezel.name = "Bezel";
+            bezel.name  = "Bezel";
             bezel.layer = emsTouchableBezel ? contactLayer : 0;
             bezel.transform.SetParent(transform, false);
-            bezel.transform.localScale = new Vector3(
+            bezel.transform.localPosition = new Vector3(0f, 0f, -screenDepth * 0.5f);
+            bezel.transform.localScale    = new Vector3(
                 screenWidth + bezelThickness * 2f,
                 screenHeight + bezelThickness * 2f,
                 screenDepth);
             bezel.GetComponent<Renderer>().material = MakeMaterial(bezelColor);
             bezel.GetComponent<BoxCollider>().isTrigger = true;
 
-            // ── Screen face ──────────────────────────────────────────────
+            // ── Screen face (thin panel IN FRONT of bezel — visible to user) ──
             var screen = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            screen.name = "Screen";
+            screen.name  = "Screen";
             screen.layer = 0;
             Destroy(screen.GetComponent<BoxCollider>());
             screen.transform.SetParent(transform, false);
-            // Front face of screen sits slightly forward of bezel (toward viewer)
-            screen.transform.localPosition = new Vector3(0, 0, -screenDepth * 0.30f);
-            screen.transform.localScale    = new Vector3(screenWidth, screenHeight, screenDepth * 0.5f);
+            // Position so the front face of the screen sits AT local origin
+            screen.transform.localPosition = new Vector3(0f, 0f, -0.0010f);
+            screen.transform.localScale    = new Vector3(screenWidth, screenHeight, 0.002f);
             screen.GetComponent<Renderer>().material = MakeMaterial(screenColor);
 
-            // ── Text element on front face ───────────────────────────────
+            // ── Text (just in front of screen face, facing the user) ────────
             var textGo = new GameObject("MonitorText");
             textGo.transform.SetParent(transform, false);
-            // Place text just in front of the screen face so it doesn't z-fight
-            textGo.transform.localPosition = new Vector3(0f, 0f, -screenDepth * 0.55f - 0.0010f);
-            // Local rotation identity: text reads with +X = world right, +Y = world up,
-            // facing -Z (which after the LookRotation(-fwd, up) on the parent points
-            // back toward the user). Apply a 180° flip around Y so the front face is
-            // toward the user.
+            // 1 mm in front of local origin = in front of the screen face
+            textGo.transform.localPosition = new Vector3(0f, 0f, 0.0015f);
+            // Default TMP front = local -Z. Monitor's local +Z faces user.
+            // To make TMP front face local +Z, rotate 180° around Y.
             textGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
 
             // Compensate for any inherited parent scale
@@ -142,10 +160,11 @@ namespace JupiterBridge.Subway
             _tmp.enableWordWrapping = true;
             _tmp.overflowMode     = TextOverflowModes.Truncate;
 
+            // sizeDelta in TMP-units. With labelScale=0.001, 1 unit = 1 mm.
             float marginM = 0.012f;
             _tmp.rectTransform.sizeDelta = new Vector2(
-                ((screenWidth  - marginM * 2f) / labelScale),
-                ((screenHeight - marginM * 2f) / labelScale));
+                (screenWidth  - marginM * 2f) / labelScale,
+                (screenHeight - marginM * 2f) / labelScale);
 
             _tmp.ForceMeshUpdate();
         }
