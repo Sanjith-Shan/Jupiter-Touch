@@ -37,9 +37,11 @@ namespace JupiterBridge.Subway
         public Color baseplateColor = new Color(0.04f, 0.04f, 0.05f);
         public Color labelColor     = new Color(0.95f, 0.97f, 1.00f);
         [Tooltip("World-space scale factor for the label transform. Determines how big letters appear physically.")]
-        public float labelScale     = 0.012f;
-        [Tooltip("TMP fontSize in TMP-units. With labelScale=0.012, fontSize 1.5 ≈ ~14 mm character height.")]
-        public float labelFontSize  = 1.5f;
+        public float labelScale     = 0.014f;
+        [Tooltip("TMP fontSize (TMP-units). With labelScale=0.014, fontSize 1.6 → ~16 mm character height with safe rect headroom.")]
+        public float labelFontSize  = 1.6f;
+        [Tooltip("If true, shrink the font on multi-character labels (e.g. 'space') so they fit.")]
+        public bool  shrinkLongLabels = true;
 
         [Header("Tilt & anchor")]
         [Tooltip("Tilt the whole keyboard back by this many degrees (toward user's face).")]
@@ -49,7 +51,7 @@ namespace JupiterBridge.Subway
         [Tooltip("On Start, position the keyboard relative to the main camera using the offset below.")]
         public bool    autoAnchorToCamera = true;
         [Tooltip("Offset from camera: x = right, y = up, z = forward (metres).")]
-        public Vector3 cameraAnchorOffset = new Vector3(0.00f, -0.35f, 0.45f);
+        public Vector3 cameraAnchorOffset = new Vector3(0.30f, -0.35f, 0.45f);
 
         // ── Layout ───────────────────────────────────────────────────────
         // Each entry: (label, char, widthMultiplier).  '\b' = backspace, '\n' = enter.
@@ -185,14 +187,15 @@ namespace JupiterBridge.Subway
             key.label   = label;
             _keys.Add(key);
 
-            // ── Label (TMP 3D, sibling of body — no inherited scale)
+            // ── Label (TMP 3D, sibling of body — no scale inheritance issues)
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(keyParent.transform, false);
             // Position just above the top face of the body
-            labelGo.transform.localPosition = new Vector3(0f, keyHeight * 0.5f + 0.0008f, 0f);
-            // Rotate so the text faces UP and reads correctly when viewed from above
-            labelGo.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-            // Uniform scale: world-space sizing in metres = TMP-units × labelScale
+            labelGo.transform.localPosition = new Vector3(0f, keyHeight * 0.5f + 0.0010f, 0f);
+            // Orient: text front (+Z) faces world UP, text up (+Y) faces FORWARD
+            // (away from user). Reading direction stays world +X.
+            labelGo.transform.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
+            // Uniform world scale — keeps text crisp regardless of key dimensions
             labelGo.transform.localScale = Vector3.one * labelScale;
 
             var tmp = labelGo.AddComponent<TextMeshPro>();
@@ -200,10 +203,11 @@ namespace JupiterBridge.Subway
             tmp.alignment        = TextAlignmentOptions.Center;
             tmp.color            = labelColor;
             tmp.fontStyle        = FontStyles.Bold;
-            tmp.enableAutoSizing = true;
-            tmp.fontSizeMin      = 0.5f;
-            tmp.fontSizeMax      = labelFontSize;
-            // sizeDelta is in TMP-space units; convert from world-space dimensions
+            // FIXED font size — autoSizing collapses to fontSizeMin and renders garbage
+            tmp.enableAutoSizing = false;
+            tmp.fontSize         = (shrinkLongLabels && label.Length > 1) ? labelFontSize * 0.55f : labelFontSize;
+            // sizeDelta is in TMP-units (label has uniform scale = labelScale,
+            // so 1 TMP-unit = labelScale metres in world)
             tmp.rectTransform.sizeDelta = new Vector2(
                 (width    / labelScale) * 0.95f,
                 (keyDepth / labelScale) * 0.95f);

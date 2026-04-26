@@ -5,18 +5,16 @@ using UnityEngine;
 namespace JupiterBridge.Subway
 {
     /// <summary>
-    /// One key on the virtual keyboard. Lives on the cube body GameObject
-    /// (so OnTrigger callbacks fire here) and tracks finger penetration via
-    /// FingerContactDetectors that JupiterTester spawns on the user's fingertips.
+    /// One key on the virtual keyboard. Press detection uses a SHARED arbitration
+    /// step so each finger can only be "claimed" by ONE key at any moment — the
+    /// key it has penetrated deepest. Other keys ignore that finger entirely,
+    /// which prevents one fingertip from triggering multiple adjacent keys at once.
     ///
-    /// Press semantics:
-    ///   • Fires when ANY contacting finger's depth crosses pressThreshold.
-    ///   • Hysteresis: re-arms only after depth drops below releaseThreshold.
-    ///   • Multi-finger: chord typing allowed — first finger across the line wins.
+    /// Hysteresis (press at pressThreshold, release at releaseThreshold) prevents
+    /// jitter retrigger.
     ///
-    /// Visual feedback:
-    ///   • Rest → Hover (light contact) → Press (deep contact) color lerp.
-    ///   • Y-axis scale-down at full press (mechanical "click" feel).
+    /// EMS firing happens automatically via the existing layer-6 → FingerContactDetector
+    /// → UDPSender pipeline. This component does no networking.
     /// </summary>
     [RequireComponent(typeof(BoxCollider))]
     public class VirtualKey : MonoBehaviour
@@ -28,10 +26,7 @@ namespace JupiterBridge.Subway
         public string label = "";
 
         [Header("Press tuning (depth normalized 0..1; FingerContactDetector.maxDepthMetres = 0.03 m)")]
-        [Tooltip("Depth at which the key fires. ~0.30 ≈ 9 mm penetration.")]
         [Range(0.05f, 1f)] public float pressThreshold   = 0.30f;
-
-        [Tooltip("Depth at which the key re-arms after release. Must be < pressThreshold.")]
         [Range(0f, 1f)]    public float releaseThreshold = 0.08f;
 
         [Header("Visual feedback")]
@@ -44,21 +39,29 @@ namespace JupiterBridge.Subway
 
         // ── runtime ────────────────────────────────────────────────────────
         readonly HashSet<FingerContactDetector> _contacting = new HashSet<FingerContactDetector>();
-        Material _mat;
-        bool     _pressed;
-        Vector3  _restScale;
+        BoxCollider _box;
+        Material    _mat;
+        bool        _pressed;
+        Vector3     _restScale;
 
         public event Action<char> OnKeyPressed;
+
+        // ── shared arbitration ─────────────────────────────────────────────
+        // Static state shared across ALL VirtualKey instances. Once per frame,
+        // for each finger touching ANY key, find the key it penetrates deepest.
+        // That key "wins" the finger; other keys ignore it.
+        static readonly HashSet<VirtualKey> AllInstances = new HashSet<VirtualKey>();
+        static readonly Dictionary<FingerContactDetector, VirtualKey> _winnerForFinger
+            = new Dictionary<FingerContactDetector, VirtualKey>();
+        static int _lastArbitrationFrame = -1;
 
         // ──────────────────────────────────────────────────────────────────
 
         void Awake()
         {
-            // Trigger collider so finger trackers slide through smoothly
-            var col = GetComponent<BoxCollider>();
-            col.isTrigger = true;
+            _box = GetComponent<BoxCollider>();
+            _box.isTrigger = true;
 
-            // Cache material instance so each key flashes independently
             var rend = GetComponent<Renderer>();
             if (rend != null)
             {
@@ -69,9 +72,12 @@ namespace JupiterBridge.Subway
             _restScale = transform.localScale;
         }
 
+        void OnEnable()  => AllInstances.Add(this);
+        void OnDisable() => AllInstances.Remove(this);
+
         void OnTriggerEnter(Collider other)
         {
-            // The Rigidbody might be on a parent of the collider, so search up.
+            // The Rigidbody might be on a parent of the collider, search up.
             var det = other.GetComponentInParent<FingerContactDetector>();
             if (det != null) _contacting.Add(det);
         }
@@ -84,17 +90,28 @@ namespace JupiterBridge.Subway
 
         void Update()
         {
-            // Defensive: prune any detectors that were destroyed
+            // Run shared arbitration once per frame (first key to call wins the race)
+            if (_lastArbitrationFrame != Time.frameCount)
+            {
+                _lastArbitrationFrame = Time.frameCount;
+                Arbitrate();
+            }
+
+            // Defensive: prune destroyed detectors
             _contacting.RemoveWhere(d => d == null);
 
+            // Compute max depth across fingers we OWN (per arbitration)
             float maxDepth = 0f;
             foreach (var det in _contacting)
+            {
+                if (!OwnsFinger(det)) continue;
                 if (det.ContactDepth > maxDepth) maxDepth = det.ContactDepth;
+            }
 
-            // ── Color: Rest → Hover → Press
+            // ── Visual: color
             Color target;
-            if (_contacting.Count == 0) target = restColor;
-            else if (maxDepth < releaseThreshold * 0.5f) target = hoverColor;
+            if (maxDepth <= 0f)                      target = restColor;
+            else if (maxDepth < releaseThreshold)    target = hoverColor;
             else
             {
                 float t = Mathf.InverseLerp(0f, pressThreshold, maxDepth);
@@ -102,7 +119,7 @@ namespace JupiterBridge.Subway
             }
             ApplyColor(target);
 
-            // ── Scale: directly drive Y by press fraction (snappier than easing)
+            // ── Visual: Y-axis scale-down at full press
             float pressFraction = Mathf.Clamp01(maxDepth / pressThreshold);
             float yTarget = Mathf.Lerp(_restScale.y, _restScale.y * pressedYScale, pressFraction);
             transform.localScale = new Vector3(_restScale.x, yTarget, _restScale.z);
@@ -118,6 +135,60 @@ namespace JupiterBridge.Subway
                 _pressed = false;
             }
         }
+
+        bool OwnsFinger(FingerContactDetector finger)
+        {
+            return _winnerForFinger.TryGetValue(finger, out var w) && w == this;
+        }
+
+        // ── Arbitration: assign each contacting finger to its deepest key ──
+        static void Arbitrate()
+        {
+            _winnerForFinger.Clear();
+
+            // Collect fingers touching any key
+            var contestedFingers = new HashSet<FingerContactDetector>();
+            foreach (var key in AllInstances)
+            {
+                if (key == null) continue;
+                key._contacting.RemoveWhere(d => d == null);
+                foreach (var f in key._contacting)
+                    contestedFingers.Add(f);
+            }
+
+            // For each finger, find the deepest key
+            foreach (var finger in contestedFingers)
+            {
+                if (finger == null) continue;
+                VirtualKey deepestKey = null;
+                float deepestDist = -1f;
+
+                foreach (var key in AllInstances)
+                {
+                    if (key == null || !key._contacting.Contains(finger)) continue;
+                    float d = key.ComputeRawPenetration(finger);
+                    if (d > deepestDist) { deepestDist = d; deepestKey = key; }
+                }
+
+                if (deepestKey != null)
+                    _winnerForFinger[finger] = deepestKey;
+            }
+        }
+
+        float ComputeRawPenetration(FingerContactDetector finger)
+        {
+            if (_box == null || finger == null) return 0f;
+            var fingerCol = finger.GetComponent<Collider>();
+            if (fingerCol == null) return 0f;
+
+            bool overlap = Physics.ComputePenetration(
+                _box,      transform.position,           transform.rotation,
+                fingerCol, fingerCol.transform.position, fingerCol.transform.rotation,
+                out _, out float distance);
+            return overlap ? distance : 0f;
+        }
+
+        // ──────────────────────────────────────────────────────────────────
 
         void Fire()
         {
