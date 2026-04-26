@@ -48,6 +48,11 @@ namespace JupiterBridge.Subway
         void Start()
         {
             CaptureSeatFrame();
+
+            // Ensure KeyboardController exists immediately so monitors spawned
+            // BEFORE the keyboard can still subscribe and display incoming text.
+            if (KeyboardController.Instance == null)
+                gameObject.AddComponent<KeyboardController>();
         }
 
         void CaptureSeatFrame()
