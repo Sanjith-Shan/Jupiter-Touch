@@ -82,11 +82,12 @@ namespace JupiterBridge.Subway
                 new K("B",'b'), new K("N",'n'), new K("M",'m'),
                 new K(",",','), new K(".",'.'),
             },
-            // Control row: backspace, space, enter
+            // Control row: backspace, space, enter (plain ASCII labels — Unicode
+            // glyphs like ⌫ ⏎ aren't in the default font and render as fallback boxes)
             new[] {
-                new K("⌫", '\b', 1.6f),
-                new K("space", ' ', 6.0f),
-                new K("⏎", '\n', 1.6f),
+                new K("Back",  '\b', 1.6f),
+                new K("space", ' ',  6.0f),
+                new K("Enter", '\n', 1.6f),
             },
         };
 
@@ -302,12 +303,12 @@ namespace JupiterBridge.Subway
         {
             switch (s)
             {
-                case "⌫": return "Backspace";
-                case "⏎": return "Enter";
+                case "Back":  return "Backspace";
+                case "Enter": return "Enter";
                 case "space": return "Space";
-                case ",": return "Comma";
-                case ".": return "Period";
-                default: return s;
+                case ",":     return "Comma";
+                case ".":     return "Period";
+                default:      return s;
             }
         }
     }
