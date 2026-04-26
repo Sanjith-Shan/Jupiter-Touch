@@ -47,6 +47,24 @@ namespace JupiterBridge.Tests
                  "contact already shows ~40% of the thickening, so a graze is visible.")]
         [Range(0f, 1f)] public float outlineContactBaseline = 0.4f;
 
+        [Header("Hand-stop illusion")]
+        [Tooltip("When a finger contacts a layer-6 surface, wireframe vertices that " +
+                 "would otherwise pass through the surface get clamped to the surface " +
+                 "plane instead. Creates the perceptual illusion that the visible hand " +
+                 "outline cannot go through the keyboard. The actual tracked bones " +
+                 "(used for contact detection / EMS) are NOT modified.")]
+        public bool handStopEnabled = true;
+
+        [Tooltip("Distance past the contacted surface (metres) where clamping is at " +
+                 "full strength. Beyond this, clamping starts fading. Default 5 cm; " +
+                 "raise if your keys / surfaces are thicker.")]
+        public float handStopFullClampDist = 0.05f;
+
+        [Tooltip("Soft fade band past full-clamp distance (metres). Across this band " +
+                 "clamp strength drops linearly to 0, so a really hard push lets the " +
+                 "finger break through gracefully instead of snapping.")]
+        public float handStopSoftZone = 0.03f;
+
         [Tooltip("Hand mesh transparency (0 = invisible, 1 = opaque)")]
         [Range(0f, 1f)]
         public float handMeshAlpha = 0.25f;
@@ -467,16 +485,59 @@ namespace JupiterBridge.Tests
                 var lr    = _lines[i];
                 if (lr == null) continue;
 
-                // Bone positions
                 if (lr.positionCount != chain.Count) lr.positionCount = chain.Count;
-                for (int j = 0; j < chain.Count; j++)
-                    if (chain[j] != null) lr.SetPosition(j, chain[j].position);
 
                 // Resolve the detector this chain belongs to.
                 int fingerIdx = _chainFingerIdx[i];
                 var det = (fingerIdx >= 0 && fingerIdx < _detectors.Length) ? _detectors[fingerIdx] : null;
                 bool active = det != null && det.IsContacting;
                 float depth = active ? Mathf.Clamp01(det.ContactDepth) : 0f;
+
+                // ── Hand-stop illusion: build a clip plane from this chain's
+                //    detector's contact info, then project any wireframe vertex
+                //    that's past the plane back onto it (with soft falloff at
+                //    deep push-through so a hard shove breaks through naturally).
+                bool clamping = false;
+                Vector3 planeNormal = Vector3.up;
+                Vector3 planePoint  = Vector3.zero;
+                if (handStopEnabled && active && det.ContactNormal.sqrMagnitude > 0.001f)
+                {
+                    clamping    = true;
+                    planeNormal = det.ContactNormal;
+                    planePoint  = det.ContactSurfacePoint;
+                }
+
+                for (int j = 0; j < chain.Count; j++)
+                {
+                    if (chain[j] == null) continue;
+                    Vector3 pos = chain[j].position;
+
+                    if (clamping)
+                    {
+                        float signedDist = Vector3.Dot(pos - planePoint, planeNormal);
+                        if (signedDist < 0f)
+                        {
+                            float pushThrough = -signedDist;     // metres past surface
+                            float strength;
+                            if (pushThrough <= handStopFullClampDist)
+                                strength = 1.0f;
+                            else if (pushThrough <= handStopFullClampDist + handStopSoftZone)
+                                strength = 1.0f - (pushThrough - handStopFullClampDist)
+                                                  / Mathf.Max(0.0001f, handStopSoftZone);
+                            else
+                                strength = 0f;
+
+                            if (strength > 0f)
+                            {
+                                // Project onto plane: shift along +normal by |signedDist|.
+                                Vector3 onPlane = pos - planeNormal * signedDist;
+                                pos = Vector3.Lerp(pos, onPlane, strength);
+                            }
+                        }
+                    }
+
+                    lr.SetPosition(j, pos);
+                }
 
                 // ── Width: rest → activeWidth, lerped by depth, with a baseline
                 //    floor on first contact so a graze is still visibly thicker.

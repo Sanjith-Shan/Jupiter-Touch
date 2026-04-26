@@ -19,6 +19,15 @@ namespace JupiterBridge
         public bool  IsContacting   { get; private set; }
         public float ContactDepth   { get; private set; }
 
+        // Plane the finger is pressing on. ContactNormal points OUT of the
+        // contacted surface (i.e. the direction the fingertip would move to
+        // un-overlap the collider). ContactSurfacePoint is the point on that
+        // surface nearest the fingertip. Used by JupiterTester's wireframe
+        // clamp to create a "hand cannot pass through the keyboard" illusion
+        // without retargeting the real hand-tracked bones.
+        public Vector3 ContactNormal       { get; private set; } = Vector3.up;
+        public Vector3 ContactSurfacePoint { get; private set; }
+
         [Tooltip("Maximum penetration distance mapped to depth = 1.0 (metres)")]
         public float maxDepthMetres = 0.03f;
 
@@ -47,6 +56,10 @@ namespace JupiterBridge
             {
                 _currentContact = other;
                 IsContacting    = true;
+                // Compute depth + normal + surface point now so the visual
+                // clamp has valid data on the very first frame of contact,
+                // before OnTriggerStay fires.
+                ContactDepth = ComputeDepth(other);
             }
         }
 
@@ -71,10 +84,17 @@ namespace JupiterBridge
             bool overlap = Physics.ComputePenetration(
                 _col,  transform.position, transform.rotation,
                 other, other.transform.position, other.transform.rotation,
-                out _, out float distance
+                out Vector3 direction, out float distance
             );
 
             if (!overlap) return 0f;
+
+            // `direction` is the unit vector along which our collider would
+            // need to move to no longer overlap `other` — i.e. it points OUT
+            // of the contacted surface. Cache for the visual clamp.
+            ContactNormal       = direction;
+            ContactSurfacePoint = transform.position + direction * distance;
+
             return Mathf.Clamp01(distance / maxDepthMetres);
         }
     }
