@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Unity
+unity/Library/
+unity/Temp/
+unity/Logs/
+unity/UserSettings/
+unity/obj/
+unity/Build/
+unity/Builds/
+unity/.vs/
+unity/**/*.meta
+*.sln
+*.csproj
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Arduino
+*.bak
+
+# Claude Code local config
+.claude/
+
+# Builds
+Builds/
+*.apk
