@@ -73,6 +73,25 @@ namespace JupiterBridge.Subway
         public static readonly UnityEngine.Vector3 MonitorAnchorOffset
             = new UnityEngine.Vector3(0.00f, 0.10f, 0.85f);
 
+        // ─── Director-driven subway spawn placement (relative to seated user) ──
+        // SubwaySceneController uses these when the presenter clicks
+        // "Spawn Monitors" / "Spawn Keyboard". The user is assumed seated and
+        // facing forward; these offsets are applied along the head-projected
+        // forward / up / right vectors.
+        public const float MonitorSpawnDistanceM = 0.85f;  // forward of head
+        public const float MonitorSpawnHeightM   = 0.05f;  // above head
+        public const float MonitorSpawnSpacingM  = 0.50f;  // L/R separation
+
+        public const float KeyboardSpawnDistanceM = 0.45f; // forward of head
+        public const float KeyboardSpawnDropM     = -0.30f; // below head (lap)
+
+        // ─── Spawn fade-in animation ──────────────────────────────────────
+        // A simple translation-only "rise into place" effect. Scale-based
+        // animation would break VirtualKeyboard's lossyScale-compensated
+        // label sizing, so we keep root scale fixed and animate position.
+        public const float SpawnFadeDurationS = 0.35f;
+        public const float SpawnRiseM         = 0.06f;
+
         // ─── Layers ───────────────────────────────────────────────────────
         public const int EmsContactLayer = 6;
     }
