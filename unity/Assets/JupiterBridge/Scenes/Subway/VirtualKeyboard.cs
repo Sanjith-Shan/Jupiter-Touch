@@ -29,6 +29,14 @@ namespace JupiterBridge.Subway
         [Tooltip("Unity layer to assign to every key. Must match the 'EMS Contact' layer.")]
         public int contactLayer   = 6;
 
+        [Header("Auto-anchor (camera-relative)")]
+        [Tooltip("If true, on Start the keyboard positions itself relative to the main camera using the offset below. " +
+                 "Useful when the OVR rig doesn't sit at world origin.")]
+        public bool autoAnchorToCamera = true;
+
+        [Tooltip("Local offset from the camera (right, up, forward) applied if autoAnchorToCamera is on.")]
+        public Vector3 cameraAnchorOffset = new Vector3(0.40f, -0.30f, 0.45f);
+
         // ── Layout definition ────────────────────────────────────────────
         // Each row: list of (label, char). Use '\b' for backspace, '\n' for enter.
         static readonly (string label, char ch)[][] Rows = new[]
@@ -55,7 +63,31 @@ namespace JupiterBridge.Subway
             if (KeyboardController.Instance == null)
                 gameObject.AddComponent<KeyboardController>();
 
+            if (autoAnchorToCamera) AnchorToCamera();
             BuildKeyboard();
+        }
+
+        void AnchorToCamera()
+        {
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                Debug.LogWarning("[VirtualKeyboard] No main camera — keeping current position.");
+                return;
+            }
+
+            Vector3 fwd   = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized;
+            if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized * -1f;
+
+            Vector3 pos = cam.transform.position
+                + right * cameraAnchorOffset.x
+                + Vector3.up * cameraAnchorOffset.y
+                + fwd * cameraAnchorOffset.z;
+
+            transform.position = pos;
+            // Keyboard faces flat (no tilt) by default — face it toward the user
+            transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
         }
 
         void BuildKeyboard()
