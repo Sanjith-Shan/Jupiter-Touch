@@ -68,8 +68,20 @@ namespace JupiterBridge.Tests
         [Tooltip("Enable sending contact events to pc_bridge.py → Arduino")]
         public bool enableEMSBridge = true;
 
-        [Tooltip("Rate for continuous intensity updates while touching (Hz)")]
+        [Tooltip("Rate for continuous intensity updates while touching (Hz). " +
+                 "Hard-capped by serial bandwidth: 19200 baud ÷ ~10 bytes/cmd " +
+                 "= ~240 cmd/s. With 6 fingers active that means ~40 Hz max " +
+                 "if EVERY update is sent. The depth-delta filter below " +
+                 "naturally throttles steady contacts well below this, so " +
+                 "90 Hz is fine in practice.")]
         public float emsSendRate = 90f;
+
+        [Tooltip("Skip continuous intensity updates whose depth differs from " +
+                 "the last sent value by less than this. 0.03 = 3 %% of the " +
+                 "depth range. A steady grip on a held object produces " +
+                 "near-constant depth → near-zero serial traffic, leaving " +
+                 "headroom for state-change edges to fire instantly.")]
+        [Range(0f, 0.2f)] public float emsDepthDeltaThreshold = 0.03f;
 
         [Header("Passthrough")]
         public bool startWithPassthrough = true;
@@ -153,7 +165,8 @@ namespace JupiterBridge.Tests
         private bool _ptActive;
 
         // UDP/EMS bridge state
-        private bool[]  _wasActive = new bool[6];
+        private bool[]  _wasActive     = new bool[6];
+        private float[] _lastSentDepth = new float[6];
         private float   _emsSendTimer;
 
         private const int ContactLayer = 6;
@@ -232,26 +245,37 @@ namespace JupiterBridge.Tests
         {
             if (UDPSender.Instance == null) return;
 
-            // Immediate send on state change (low latency)
+            // ── Edge events: fire IMMEDIATELY whenever contact state flips,
+            //    regardless of timer or depth-delta filter. Touch-on /
+            //    touch-off must always be heard by the Arduino without delay.
             for (int i = 0; i < 6; i++)
             {
                 if (IsContacting[i] != _wasActive[i])
                 {
                     SendContactUDP(i, IsContacting[i], ContactDepth[i]);
-                    _wasActive[i] = IsContacting[i];
+                    _wasActive[i]     = IsContacting[i];
+                    _lastSentDepth[i] = ContactDepth[i];
                 }
             }
 
-            // Continuous intensity updates for active contacts (~90 Hz)
+            // ── Continuous updates: gated by both rate AND depth-delta.
+            //    The depth-delta filter is the key throughput protector —
+            //    serial bandwidth caps total commands at ~240/sec across
+            //    one Arduino, so a 6-finger steady grip at 90 Hz would
+            //    overflow without filtering. With the filter, a stable
+            //    grip generates near-zero traffic; only depth changes do.
             _emsSendTimer += Time.deltaTime;
-            float interval = 1f / emsSendRate;
+            float interval = 1f / Mathf.Max(1f, emsSendRate);
             if (_emsSendTimer >= interval)
             {
                 _emsSendTimer = 0f;
                 for (int i = 0; i < 6; i++)
                 {
-                    if (IsContacting[i])
-                        SendContactUDP(i, true, ContactDepth[i]);
+                    if (!IsContacting[i]) continue;
+                    float d = ContactDepth[i];
+                    if (Mathf.Abs(d - _lastSentDepth[i]) < emsDepthDeltaThreshold) continue;
+                    SendContactUDP(i, true, d);
+                    _lastSentDepth[i] = d;
                 }
             }
         }

@@ -276,5 +276,135 @@ class TypingSequenceTest(unittest.TestCase):
         ])
 
 
+# ── Phone-holding scenario: end-to-end multi-hand integration ────────────────
+
+class PhoneHoldingScenarioTest(unittest.TestCase):
+    """Simulates the Spawn Phone interaction: user grabs the phone with
+    their right hand (5 fingers wrap), holds it for ~1 sec with shifting
+    grip pressure (depth varies), then releases. The bridge must:
+      1. Route everything to the right Arduino.
+      2. Generate well-formed CxIy / CxOFF commands for every event.
+      3. Never fire commands on the LEFT Arduino.
+      4. Cleanly finish with all 6 channels OFF after release."""
+
+    def test_one_handed_grip_release(self):
+        right = FakeHandBridge("right")
+        left  = FakeHandBridge("left")
+        router = pc_bridge.JupiterRouter({"right": right, "left": left})
+
+        fingers = ["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm"]
+
+        # 1) Grip onset — all 6 fingers wrap around the phone simultaneously
+        for f in fingers:
+            router.handle_contact({"hand": "right", "finger": f, "active": True, "depth": 0.20})
+
+        # 2) Pressure shift — user squeezes harder, depth ramps up
+        for d in [0.30, 0.40, 0.50]:
+            for f in fingers:
+                router.handle_contact({"hand": "right", "finger": f, "active": True, "depth": d})
+
+        # 3) Release — user opens hand
+        for f in fingers:
+            router.handle_contact({"hand": "right", "finger": f, "active": False, "depth": 0.0})
+
+        # All commands went to the right Arduino
+        self.assertGreater(len(right.sent), 0)
+        # Nothing leaked to the left Arduino
+        self.assertEqual(left.sent, [])
+
+        # Every command targets one of the 6 valid channels
+        for cmd in right.sent:
+            self.assertTrue(cmd.startswith("C"), f"Bad cmd: {cmd}")
+            ch = int(cmd[1:cmd.index("I")] if "I" in cmd else cmd[1:cmd.index("O")])
+            self.assertIn(ch, [1, 2, 3, 4, 5, 6])
+
+        # Last 6 commands are the 6 OFFs from release
+        last_six = right.sent[-6:]
+        for cmd in last_six:
+            self.assertRegex(cmd, r"^C[1-6]OFF$")
+
+    def test_two_handed_independent_grips(self):
+        """Both hands gripping different objects simultaneously. Right hand
+        on phone, left hand typing. Verify both Arduinos see only their own
+        events, both produce well-formed command streams, and no
+        cross-hand contamination."""
+        right = FakeHandBridge("right")
+        left  = FakeHandBridge("left")
+        router = pc_bridge.JupiterRouter({"right": right, "left": left})
+
+        # Right hand grips phone — sustained 5-finger contact
+        for f in ["Thumb", "Index", "Middle", "Ring", "Pinky"]:
+            router.handle_contact({"hand": "right", "finger": f, "active": True, "depth": 0.35})
+
+        # Left hand types: index hits Q, then middle hits W
+        router.handle_contact({"hand": "left",  "finger": "Index",  "active": True,  "depth": 0.7})
+        router.handle_contact({"hand": "left",  "finger": "Index",  "active": False, "depth": 0.0})
+        router.handle_contact({"hand": "left",  "finger": "Middle", "active": True,  "depth": 0.6})
+        router.handle_contact({"hand": "left",  "finger": "Middle", "active": False, "depth": 0.0})
+
+        # Right released
+        for f in ["Thumb", "Index", "Middle", "Ring", "Pinky"]:
+            router.handle_contact({"hand": "right", "finger": f, "active": False, "depth": 0.0})
+
+        # Right Arduino: 5 grip ONs + 5 release OFFs = 10 commands
+        self.assertEqual(len(right.sent), 10)
+        # Left Arduino: 4 typing events
+        self.assertEqual(len(left.sent), 4)
+
+        # Right channels touched: 1..5 (Thumb..Pinky), no Palm
+        right_channels = set()
+        for cmd in right.sent:
+            ch = int(cmd[1])
+            right_channels.add(ch)
+        self.assertEqual(right_channels, {1, 2, 3, 4, 5})
+
+        # Left channels touched: 2 (Index), 3 (Middle)
+        left_channels = set()
+        for cmd in left.sent:
+            ch = int(cmd[1])
+            left_channels.add(ch)
+        self.assertEqual(left_channels, {2, 3})
+
+    def test_serial_command_format_matches_firmware_parser(self):
+        """Every command shape the bridge can produce is something the
+        Arduino firmware's processCommand() will parse correctly. Cross-
+        check by replaying the firmware's parsing rules against bridge
+        outputs."""
+        right = FakeHandBridge("right")
+        router = pc_bridge.JupiterRouter({"right": right, "left": None})
+
+        # Generate a representative span of commands
+        for d in [0.0, 0.05, 0.27, 0.5, 0.99, 1.0]:
+            for f in ["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm"]:
+                router.handle_contact({"hand": "right", "finger": f, "active": True, "depth": d})
+        for f in ["Thumb", "Index", "Middle", "Ring", "Pinky", "Palm"]:
+            router.handle_contact({"hand": "right", "finger": f, "active": False, "depth": 0.0})
+
+        # Firmware parser rules (mirroring jupiter_touch.ino processCommand):
+        for cmd in right.sent:
+            # 1. Must start with 'C'
+            self.assertTrue(cmd[0] == 'C', f"firmware would route {cmd} to legacy path")
+
+            if "OFF" in cmd:
+                # CxOFF — channel substring must be a valid digit 1..6
+                ch_str = cmd[1:cmd.index("OFF")]
+                self.assertTrue(ch_str.isdigit(), f"firmware: bad chan in {cmd}")
+                ch = int(ch_str)
+                self.assertIn(ch, range(1, 7))
+            elif "I" in cmd:
+                # CxIy — channel and intensity must be valid digits
+                i_idx = cmd.index("I")
+                ch_str  = cmd[1:i_idx]
+                int_str = cmd[i_idx + 1:]
+                self.assertTrue(ch_str.isdigit(), f"firmware: bad chan in {cmd}")
+                self.assertTrue(int_str.isdigit(), f"firmware: bad intensity in {cmd}")
+                self.assertIn(int(ch_str), range(1, 7))
+                # Firmware accepts 0..255
+                self.assertGreaterEqual(int(int_str), 0)
+                self.assertLessEqual(int(int_str), 255)
+            else:
+                self.fail(f"firmware would silently ignore: {cmd}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
