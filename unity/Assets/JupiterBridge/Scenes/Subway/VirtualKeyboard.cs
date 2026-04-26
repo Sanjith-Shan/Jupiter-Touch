@@ -36,12 +36,14 @@ namespace JupiterBridge.Subway
         [Header("Visual")]
         public Color baseplateColor = new Color(0.04f, 0.04f, 0.05f);
         public Color labelColor     = new Color(0.95f, 0.97f, 1.00f);
-        [Tooltip("World-space scale factor for the label transform. Determines how big letters appear physically.")]
-        public float labelScale     = 0.014f;
-        [Tooltip("TMP fontSize (TMP-units). With labelScale=0.014, fontSize 1.6 → ~16 mm character height with safe rect headroom.")]
-        public float labelFontSize  = 1.6f;
+        [Tooltip("Label transform scale. 0.001 means 1 TMP unit = 1 mm world.")]
+        public float labelScale     = 0.001f;
+        [Tooltip("TMP fontSize in POINT units (like 12pt, 24pt). With labelScale=0.001, fontSize 24 ≈ 17 mm capital height.")]
+        public float labelFontSize  = 24f;
         [Tooltip("If true, shrink the font on multi-character labels (e.g. 'space') so they fit.")]
         public bool  shrinkLongLabels = true;
+        [Tooltip("Multi-char shrink factor (used when shrinkLongLabels is on).")]
+        [Range(0.3f, 1f)] public float longLabelShrink = 0.55f;
 
         [Header("Tilt & anchor")]
         [Tooltip("Tilt the whole keyboard back by this many degrees (toward user's face).")]
@@ -195,22 +197,39 @@ namespace JupiterBridge.Subway
             // Orient: text front (+Z) faces world UP, text up (+Y) faces FORWARD
             // (away from user). Reading direction stays world +X.
             labelGo.transform.localRotation = Quaternion.LookRotation(Vector3.up, Vector3.forward);
-            // Uniform world scale — keeps text crisp regardless of key dimensions
-            labelGo.transform.localScale = Vector3.one * labelScale;
+            // labelScale = 0.001 → 1 TMP unit (mesh space) = 1 mm world.
+            // Compensate for any non-unit scale inherited from parents in the
+            // hierarchy (XR rig, scene root, etc.) so glyphs always render at
+            // the intended physical size regardless of where the keyboard sits.
+            float parentScale = Mathf.Max(0.0001f, keyParent.transform.lossyScale.x);
+            labelGo.transform.localScale = Vector3.one * (labelScale / parentScale);
 
             var tmp = labelGo.AddComponent<TextMeshPro>();
             tmp.text             = label;
             tmp.alignment        = TextAlignmentOptions.Center;
             tmp.color            = labelColor;
-            tmp.fontStyle        = FontStyles.Bold;
+            // Skip Bold — it can trigger missing-glyph fallback if the asset
+            // doesn't ship a bold variant. Plain works on every TMP install.
+            tmp.fontStyle        = FontStyles.Normal;
             // FIXED font size — autoSizing collapses to fontSizeMin and renders garbage
             tmp.enableAutoSizing = false;
-            tmp.fontSize         = (shrinkLongLabels && label.Length > 1) ? labelFontSize * 0.55f : labelFontSize;
-            // sizeDelta is in TMP-units (label has uniform scale = labelScale,
-            // so 1 TMP-unit = labelScale metres in world)
+            tmp.fontSize         = (shrinkLongLabels && label.Length > 1)
+                                     ? labelFontSize * longLabelShrink
+                                     : labelFontSize;
+            // Disable margins/word-wrap so a single character isn't word-wrapped weirdly
+            tmp.enableWordWrapping = false;
+            tmp.overflowMode       = TextOverflowModes.Overflow;
+            // sizeDelta in TMP-units. With labelScale=0.001, 1 TMP unit = 1 mm.
+            //   World rect (m) = sizeDelta * labelScale
+            //   For a 26 mm key: sizeDelta = 26 * 0.95 = 24.7 TMP units
             tmp.rectTransform.sizeDelta = new Vector2(
                 (width    / labelScale) * 0.95f,
                 (keyDepth / labelScale) * 0.95f);
+
+            // Force the SDF mesh to regenerate now that all properties are set —
+            // some Unity / TMP versions otherwise wait until next frame and
+            // occasionally render the un-textured fallback at frame 0.
+            tmp.ForceMeshUpdate();
         }
 
         void BuildBasePlate()
