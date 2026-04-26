@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
+using JupiterBridge.Subway;  // JupiterTouchSizing lives here
 
 namespace JupiterBridge.Tests
 {
