@@ -31,7 +31,6 @@ namespace JupiterBridge.Tests
 
         [Header("Contact Detection")]
         public float tipColliderRadius = 0.013f;
-        public float tipVisualRadius   = 0.018f;
         public float maxDepthMetres    = 0.03f;
 
         [Header("Hand Outline")]
@@ -106,13 +105,21 @@ namespace JupiterBridge.Tests
         // ── Private ────────────────────────────────────────────────────────
         private Transform[]             _bonePivots = new Transform[6];
         private FingerContactDetector[] _detectors  = new FingerContactDetector[6];
-        private Material[]              _glowMats   = new Material[6];
         private Shader                  _shader;
         private bool                    _palmIsWristBone;
 
         // Wireframe
         private List<LineRenderer>    _lines  = new List<LineRenderer>();
         private List<List<Transform>> _chains = new List<List<Transform>>();
+        // Detector index that each chain in _lines/_chains belongs to.
+        // 0..4 = thumb..pinky, 5 = palm. Tracked explicitly so a missing
+        // finger chain doesn't shift the mapping for the others.
+        private List<int>             _chainFingerIdx = new List<int>();
+
+        // Outline colors. White when idle; finger-specific colour, slightly
+        // brightened toward white at deeper press, when that finger is in
+        // contact with a layer-6 object.
+        private static readonly Color OutlineIdle = new Color(1f, 1f, 1f, 0.9f);
 
         // Passthrough
         private OVRPassthroughLayer _ptLayer;
@@ -160,7 +167,6 @@ namespace JupiterBridge.Tests
         void Update()
         {
             UpdateTipPositions();
-            UpdateGlowMaterials();
             UpdateWireframe();
 
             for (int i = 0; i < 6; i++)
@@ -336,7 +342,7 @@ namespace JupiterBridge.Tests
             if (rightHandSkeleton == null || !rightHandSkeleton.IsInitialized) return;
             var bones = rightHandSkeleton.Bones;
 
-            Color outlineColor = new Color(1f, 1f, 1f, 0.9f); // white
+            Color outlineColor = OutlineIdle;
 
             // Build one chain per finger
             for (int chain = 0; chain < ChainDefinitions.Length; chain++)
@@ -384,6 +390,7 @@ namespace JupiterBridge.Tests
                 {
                     _chains.Add(chainBones);
                     _lines.Add(MakeLine(outlineColor, chainBones.Count));
+                    _chainFingerIdx.Add(chain);  // chain index 0..4 == detector index for thumb..pinky
                 }
             }
 
@@ -414,6 +421,7 @@ namespace JupiterBridge.Tests
 
                 _chains.Add(palmChain);
                 _lines.Add(MakeLine(outlineColor, palmChain.Count));
+                _chainFingerIdx.Add(5);  // palm detector
             }
 
             Debug.Log($"[JupiterTester] Outline: {_lines.Count} chains");
@@ -442,13 +450,35 @@ namespace JupiterBridge.Tests
 
         void UpdateWireframe()
         {
-            for (int i = 0; i < _lines.Count && i < _chains.Count; i++)
+            int n = Mathf.Min(_lines.Count, Mathf.Min(_chains.Count, _chainFingerIdx.Count));
+            for (int i = 0; i < n; i++)
             {
                 var chain = _chains[i];
-                var lr = _lines[i];
+                var lr    = _lines[i];
+                if (lr == null) continue;
+
+                // Bone positions
                 if (lr.positionCount != chain.Count) lr.positionCount = chain.Count;
                 for (int j = 0; j < chain.Count; j++)
                     if (chain[j] != null) lr.SetPosition(j, chain[j].position);
+
+                // Per-chain colour: white at rest, finger-colour when in contact,
+                // brightened toward white on deeper presses.
+                int fingerIdx = _chainFingerIdx[i];
+                var det = (fingerIdx >= 0 && fingerIdx < _detectors.Length) ? _detectors[fingerIdx] : null;
+
+                Color target = OutlineIdle;
+                if (det != null && det.IsContacting)
+                {
+                    Color baseCol = FingerColors[fingerIdx];
+                    float depth   = Mathf.Clamp01(det.ContactDepth);
+                    target = Color.Lerp(baseCol, Color.white, depth * 0.4f);
+                    target.a = 1f;
+                }
+
+                lr.startColor = target;
+                lr.endColor   = target;
+                if (lr.material != null) lr.material.color = target;
             }
         }
 
@@ -535,6 +565,9 @@ namespace JupiterBridge.Tests
 
         void BuildFingerTips()
         {
+            // Each detector is an INVISIBLE trigger collider that follows a fingertip
+            // bone. Visualisation of contact happens via the outline-wireframe
+            // colouring (UpdateWireframe), not via per-tip geometry.
             for (int i = 0; i < 6; i++)
             {
                 var go = new GameObject($"JT_{FingerNames[i]}Tip");
@@ -551,16 +584,6 @@ namespace JupiterBridge.Tests
                 det.maxDepthMetres   = maxDepthMetres;
                 det.contactLayerIndex = ContactLayer;
                 _detectors[i] = det;
-
-                var vis = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                vis.name = $"JT_{FingerNames[i]}Glow";
-                vis.transform.SetParent(go.transform);
-                vis.transform.localPosition = Vector3.zero;
-                vis.transform.localScale = Vector3.one * (tipVisualRadius * 2f);
-                Destroy(vis.GetComponent<Collider>());
-
-                _glowMats[i] = MakeEmissiveMat(InactiveColor, Color.black);
-                vis.GetComponent<MeshRenderer>().material = _glowMats[i];
             }
         }
 
@@ -630,21 +653,6 @@ namespace JupiterBridge.Tests
                 if (i == 5 && _palmIsWristBone)
                     _detectors[i].transform.position += _bonePivots[5].TransformDirection(new Vector3(0, 0.05f, 0));
                 _detectors[i].transform.rotation = _bonePivots[i].rotation;
-            }
-        }
-
-        void UpdateGlowMaterials()
-        {
-            for (int i = 0; i < 6; i++)
-            {
-                if (_detectors[i] == null || _glowMats[i] == null) continue;
-                Color c = _detectors[i].IsContacting ? FingerColors[i] : InactiveColor;
-                Color emit = _detectors[i].IsContacting
-                    ? FingerColors[i] * Mathf.Lerp(0.5f, 3f, _detectors[i].ContactDepth) : Color.black;
-                _glowMats[i].color = c;
-                if (_glowMats[i].HasProperty("_Color")) _glowMats[i].SetColor("_Color", c);
-                if (_glowMats[i].HasProperty("_BaseColor")) _glowMats[i].SetColor("_BaseColor", c);
-                if (_glowMats[i].HasProperty("_EmissionColor")) _glowMats[i].SetColor("_EmissionColor", emit);
             }
         }
 
