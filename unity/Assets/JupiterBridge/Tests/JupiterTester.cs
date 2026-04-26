@@ -57,9 +57,13 @@ namespace JupiterBridge.Tests
         public bool startWithPassthrough = true;
 
         [Header("Production mode")]
-        [Tooltip("If false, skip building the test sphere/finger-targets and the status panel HUD. " +
-                 "Use false in director-driven demo scenes; true for standalone testing.")]
+        [Tooltip("Spawn the test sphere + platform + 5 finger-target balls. " +
+                 "Use only for standalone testing — disable in director-driven demo scenes.")]
         public bool buildTestScene = true;
+
+        [Tooltip("Spawn the EMS finger-status HUD (per-finger contact + intensity bars). " +
+                 "Keep this true in Bootstrap so the panel is visible in every demo scene.")]
+        public bool buildStatusPanel = true;
 
         // ── Definitions ────────────────────────────────────────────────────
         public static readonly string[] FingerNames =
@@ -144,11 +148,8 @@ namespace JupiterBridge.Tests
             if (headFwd.sqrMagnitude < 0.01f) headFwd = Vector3.forward;
             Vector3 headRight = Vector3.Cross(Vector3.up, headFwd).normalized * -1f;
 
-            if (buildTestScene)
-            {
-                BuildTestScene(headPos, headFwd, headRight);
-                BuildStatusPanel(headPos, headFwd, headRight);
-            }
+            if (buildTestScene)  BuildTestScene(headPos, headFwd, headRight);
+            if (buildStatusPanel) BuildStatusPanel(headPos, headFwd, headRight);
 
             yield return StartCoroutine(BindBones());
 
