@@ -162,9 +162,12 @@ namespace JupiterBridge.Subway
                 0f,
                 keyHeight * 0.5f + JupiterTouchSizing.KeyboardLabelLiftMm * 0.001f,
                 0f);
-            // Rotate so TMP front (local +Z) faces world UP and reading
-            // direction (+X) stays world +X.
-            labelGo.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            // TMP's readable face is local -Z (verified: Unity's default scene
+            // camera sits at world -Z and renders TMP correctly).
+            // +90° around X takes local +Z → world -Y, so local -Z → world +Y.
+            // Net result: text faces UP, reads world +X (not mirrored), text-top
+            // points away from the user (book-on-table orientation, not upside-down).
+            labelGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
 
             // Compensate for any inherited parent scale
             float parentScale = Mathf.Max(0.0001f, keyParent.transform.lossyScale.x);
