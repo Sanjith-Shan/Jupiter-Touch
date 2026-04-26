@@ -34,8 +34,18 @@ namespace JupiterBridge.Tests
         public float maxDepthMetres    = 0.03f;
 
         [Header("Hand Outline")]
-        [Tooltip("Width of the white outline lines")]
+        [Tooltip("Width of the outline lines at rest (metres). 0.003 = 3 mm.")]
         public float outlineWidth = 0.003f;
+
+        [Tooltip("Width of an active (touching) finger's line at full press depth " +
+                 "(metres). Lerped between rest and this value by ContactDepth, with " +
+                 "a baseline floor so initial contact is still visible.")]
+        public float outlineActiveWidth = 0.012f;
+
+        [Tooltip("Minimum fraction of the rest→active width range applied the moment " +
+                 "a finger first registers contact (depth ≈ 0). 0.4 means initial " +
+                 "contact already shows ~40% of the thickening, so a graze is visible.")]
+        [Range(0f, 1f)] public float outlineContactBaseline = 0.4f;
 
         [Tooltip("Hand mesh transparency (0 = invisible, 1 = opaque)")]
         [Range(0f, 1f)]
@@ -462,20 +472,26 @@ namespace JupiterBridge.Tests
                 for (int j = 0; j < chain.Count; j++)
                     if (chain[j] != null) lr.SetPosition(j, chain[j].position);
 
-                // Per-chain colour: white at rest, finger-colour when in contact,
-                // brightened toward white on deeper presses.
+                // Resolve the detector this chain belongs to.
                 int fingerIdx = _chainFingerIdx[i];
                 var det = (fingerIdx >= 0 && fingerIdx < _detectors.Length) ? _detectors[fingerIdx] : null;
+                bool active = det != null && det.IsContacting;
+                float depth = active ? Mathf.Clamp01(det.ContactDepth) : 0f;
 
+                // ── Width: rest → activeWidth, lerped by depth, with a baseline
+                //    floor on first contact so a graze is still visibly thicker.
+                float widthLerp = active ? Mathf.Max(outlineContactBaseline, depth) : 0f;
+                float width     = Mathf.Lerp(outlineWidth, outlineActiveWidth, widthLerp);
+                lr.startWidth = width;
+                lr.endWidth   = width;
+
+                // ── Colour: white at rest, finger colour on contact.
                 Color target = OutlineIdle;
-                if (det != null && det.IsContacting)
+                if (active)
                 {
-                    Color baseCol = FingerColors[fingerIdx];
-                    float depth   = Mathf.Clamp01(det.ContactDepth);
-                    target = Color.Lerp(baseCol, Color.white, depth * 0.4f);
+                    target   = FingerColors[fingerIdx];
                     target.a = 1f;
                 }
-
                 lr.startColor = target;
                 lr.endColor   = target;
                 if (lr.material != null) lr.material.color = target;
