@@ -1,5 +1,5 @@
 /*
- * Jupiter Bridge — I2C Pot Verification Test
+ * Jupiter Touch — I2C Pot Verification Test
  * 
  * Flash this INSTEAD of the main firmware (temporarily).
  * It writes values to each pot and reads them back to verify I2C works.

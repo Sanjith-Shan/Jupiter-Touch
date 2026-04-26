@@ -1,4 +1,4 @@
-# Jupiter Bridge
+# Jupiter Touch
 
 End-to-end system for per-finger EMS haptic feedback on Meta Quest 3.
 
@@ -11,7 +11,7 @@ End-to-end system for per-finger EMS haptic feedback on Meta Quest 3.
 ## Repository layout
 
 ```
-firmware/jupiter_bridge/   Arduino firmware (6-channel EMS controller)
+firmware/jupiter_touch/    Arduino firmware (6-channel EMS controller)
 bridge/pc_bridge.py        Python UDP→Serial bridge
 unity/Assets/JupiterBridge Unity C# scripts (Meta XR SDK, hand tracking)
 ```
@@ -46,7 +46,7 @@ Legacy single-char commands (`1`, `2`, `q`, `a`, `w`, `s`) still work for bench 
 
 ### Flash
 
-Open `firmware/jupiter_bridge/jupiter_bridge.ino` in Arduino IDE, select **Arduino Nano**, flash.
+Open `firmware/jupiter_touch/jupiter_touch.ino` in Arduino IDE, select **Arduino Nano**, flash.
 
 ---
 

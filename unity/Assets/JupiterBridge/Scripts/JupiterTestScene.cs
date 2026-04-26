@@ -3,7 +3,7 @@ using UnityEngine;
 namespace JupiterBridge
 {
     /// <summary>
-    /// Procedurally builds the Jupiter Bridge test scene at runtime.
+    /// Procedurally builds the Jupiter Touch test scene at runtime.
     ///
     /// Attach this to an empty GameObject in a blank scene alongside
     /// OVRCameraRig (from Meta XR SDK). Configure the public fields

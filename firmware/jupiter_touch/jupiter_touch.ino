@@ -1,5 +1,5 @@
 /*
- * Jupiter Bridge — Arduino Nano Firmware v2.0
+ * Jupiter Touch — Arduino Nano Firmware v2.0
  * 6-channel EMS haptic device controller
  *
  * Hardware:
@@ -117,7 +117,7 @@ void setup() {
 
     lastCommandTime = millis();
 
-    Serial.println(F("JupiterBridge v2.0 — 6ch ready"));
+    Serial.println(F("JupiterTouch v2.0 — 6ch ready"));
     Serial.println(F("Commands: CxIy CxON CxOFF ALLOFF STATUS"));
     Serial.println(F("Safety: 15s timeout active"));
 }

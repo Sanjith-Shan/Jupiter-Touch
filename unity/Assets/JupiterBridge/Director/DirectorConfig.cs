@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace JupiterBridge.Director
 {
-    [CreateAssetMenu(menuName = "JupiterBridge/DirectorConfig", fileName = "DirectorConfig")]
+    [CreateAssetMenu(menuName = "JupiterTouch/DirectorConfig", fileName = "DirectorConfig")]
     public class DirectorConfig : ScriptableObject
     {
         [Tooltip("IP of the PC running director_server.py")]

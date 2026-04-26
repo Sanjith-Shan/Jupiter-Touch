@@ -1,5 +1,5 @@
 """
-Jupiter Bridge — Director Server
+Jupiter Touch — Director Server
 Serves the presenter dashboard and relays control messages to the Quest.
 
 Usage:
@@ -136,7 +136,7 @@ def build_app() -> web.Application:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Jupiter Bridge Director Server")
+    parser = argparse.ArgumentParser(description="Jupiter Touch Director Server")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()

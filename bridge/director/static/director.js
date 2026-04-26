@@ -1,5 +1,5 @@
 /**
- * Jupiter Bridge — Director Console JS
+ * Jupiter Touch — Director Console JS
  *
  * Connects to the local director_server.py via WebSocket and provides:
  *   - Scene switching buttons

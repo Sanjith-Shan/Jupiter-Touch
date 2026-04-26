@@ -1,7 +1,7 @@
 """
-Jupiter Bridge — PC Serial Bridge
+Jupiter Touch — PC Serial Bridge
 Receives UDP contact events from the Meta Quest 3 and translates them to
-serial commands for the Jupiter EMS device (Arduino Nano, 19200 baud).
+serial commands for the Jupiter Touch EMS device (Arduino Nano, 19200 baud).
 
 Usage:
     python pc_bridge.py --port COM3          # Windows
@@ -69,7 +69,7 @@ def depth_to_pot(depth: float) -> int:
     return pot
 
 
-class JupiterBridge:
+class JupiterTouch:
     def __init__(self, serial_port: str):
         self.serial_port = serial_port
         self._ser = None
@@ -148,12 +148,12 @@ class JupiterBridge:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Jupiter Bridge PC serial bridge")
+    parser = argparse.ArgumentParser(description="Jupiter Touch PC serial bridge")
     parser.add_argument("--port", required=True, help="Arduino serial port (e.g. COM3 or /dev/ttyUSB0)")
     parser.add_argument("--udp-port", type=int, default=UDP_PORT, help=f"UDP listen port (default {UDP_PORT})")
     args = parser.parse_args()
 
-    bridge = JupiterBridge(args.port)
+    bridge = JupiterTouch(args.port)
     bridge.run_udp(port=args.udp_port)
 
 

@@ -1,4 +1,4 @@
-# Jupiter Bridge — Director System (Milestone 1)
+# Jupiter Touch — Director System (Milestone 1)
 
 Gives a presenter on a PC:
 1. A **live mirror** of the Quest 3 headset view embedded in a browser tab.
@@ -88,7 +88,7 @@ https://github.com/endel/NativeWebSocket.git#upm
 ```
 
 ### 2. Create a DirectorConfig asset
-In **Project window → right-click → Create → JupiterBridge → DirectorConfig**.
+In **Project window → right-click → Create → JupiterTouch → DirectorConfig**.
 Set **PC IP** to your laptop's LAN IP (find it with `ipconfig getifaddr en0` on Mac).
 
 ### 3. Build the Bootstrap scene
