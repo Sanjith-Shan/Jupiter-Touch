@@ -151,6 +151,28 @@
     }
     .scene-btn.active .badge { background: #3a3a70; color: #aaaaf0; }
 
+    /* event buttons */
+    #event-buttons { display: flex; flex-direction: column; gap: 8px; }
+    .event-btn {
+      background: #1a1a26;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      color: #b8b8d0;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+      transition: background .15s, border-color .15s;
+    }
+    .event-btn:hover:not(:disabled) { background: #25253a; border-color: #4a4a7a; color: #e0e0f0; }
+    .event-btn:disabled, .event-btn.disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+    .event-btn.danger { color: #d88080; border-color: #4a2222; }
+    .event-btn.danger:hover:not(:disabled) { background: #2a1818; border-color: #804040; color: #ffaaaa; }
+
     /* log */
     #log-area {
       flex: 1;
@@ -218,6 +240,14 @@
       <div class="section-label">Scenes</div>
       <div id="scene-buttons" style="margin-top:10px">
         <!-- populated by SCENES array in director.js -->
+      </div>
+    </div>
+
+    <!-- in-scene event triggers -->
+    <div>
+      <div class="section-label">Events</div>
+      <div id="event-buttons" style="margin-top:10px">
+        <!-- populated by EVENTS array in director.js -->
       </div>
     </div>
 

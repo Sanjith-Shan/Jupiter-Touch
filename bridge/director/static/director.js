@@ -11,11 +11,17 @@
 // ── Scene list ─────────────────────────────────────────────────────────────
 // Add new demo scenes here — no server changes required.
 const SCENES = [
-  { name: "DemoRoom_Red",  label: "Red Room",  fade: 0.4 },
-  { name: "DemoRoom_Blue", label: "Blue Room", fade: 0.4 },
-  // milestone 2+:
-  // { name: "Sidewalk",      label: "Sidewalk — grab the phone", fade: 0.6 },
-  // { name: "Subway",        label: "Subway — 4-monitor rig",    fade: 0.6 },
+  { name: "DemoRoom_Red",    label: "Red Room",        fade: 0.4 },
+  { name: "DemoRoom_Blue",   label: "Blue Room",       fade: 0.4 },
+  { name: "DemoRoom_Subway", label: "Subway",          fade: 0.6 },
+];
+
+// ── Event triggers (for in-scene events: spawn objects, advance script, etc.)
+// Each event sends {"type":"event.trigger","id":"<id>"} to the Quest.
+const EVENTS = [
+  { id: "spawn_monitors", label: "Spawn Monitors",  scope: "DemoRoom_Subway" },
+  { id: "spawn_keyboard", label: "Spawn Keyboard",  scope: "DemoRoom_Subway" },
+  { id: "reset_subway",   label: "Reset Subway",    scope: "DemoRoom_Subway", danger: true },
 ];
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -33,6 +39,7 @@ const videoPaneEl = document.getElementById("video-pane");
 const scrcpyInput = document.getElementById("scrcpy-url");
 const btnMirror   = document.getElementById("btn-load-mirror");
 const sceneBtns   = document.getElementById("scene-buttons");
+const eventBtns   = document.getElementById("event-buttons");
 
 // ── Logger ─────────────────────────────────────────────────────────────────
 function appendLog(text, cls = "system") {
@@ -74,6 +81,7 @@ function connect() {
         setStatus("full");
         appendLog("Quest connected", "system");
         updateSceneButtons();
+        updateEventButtons();
         break;
 
       case "quest.disconnected":
@@ -81,6 +89,7 @@ function connect() {
         setStatus("server-only");
         appendLog("Quest disconnected", "system");
         updateSceneButtons();
+        updateEventButtons();
         break;
 
       case "ack":
@@ -106,6 +115,7 @@ function connect() {
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 16000);
     updateSceneButtons();
+    updateEventButtons();
   };
 
   ws.onerror = () => {
@@ -172,6 +182,35 @@ function loadScene(scene) {
   send({ type: "scene.load", name: scene.name, fade: scene.fade });
   activeScene = scene.name;
   updateSceneButtons();
+  updateEventButtons();
+}
+
+// ── Event buttons ──────────────────────────────────────────────────────────
+function buildEventButtons() {
+  eventBtns.innerHTML = "";
+  EVENTS.forEach(ev => {
+    const btn = document.createElement("button");
+    btn.className = "event-btn" + (ev.danger ? " danger" : "");
+    btn.dataset.id = ev.id;
+    btn.dataset.scope = ev.scope || "";
+    btn.textContent = ev.label;
+    btn.addEventListener("click", () => triggerEvent(ev));
+    eventBtns.appendChild(btn);
+  });
+}
+
+function updateEventButtons() {
+  const btns = eventBtns.querySelectorAll(".event-btn");
+  btns.forEach(btn => {
+    const scope = btn.dataset.scope;
+    const inScope = !scope || scope === activeScene;
+    btn.disabled = !questConnected || !inScope;
+    btn.classList.toggle("disabled", !inScope);
+  });
+}
+
+function triggerEvent(ev) {
+  send({ type: "event.trigger", id: ev.id });
 }
 
 // ── Mirror (ws-scrcpy embed) ───────────────────────────────────────────────
@@ -215,5 +254,7 @@ document.addEventListener("keydown", (e) => {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 buildSceneButtons();
+buildEventButtons();
 updateSceneButtons();
+updateEventButtons();
 connect();
