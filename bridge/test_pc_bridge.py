@@ -107,7 +107,8 @@ class RouterBothHandsTests(unittest.TestCase):
             "hand": "right", "finger": "Index", "active": True, "depth": 0.5
         })
         self.assertEqual(result[0], "right")
-        self.assertEqual(self.right.sent, ["C2I125"])
+        # depth=0.5 → sqrt(0.5)=0.7071 → 220 - int(0.7071*190) = 86
+        self.assertEqual(self.right.sent, ["C2I86"])
         self.assertEqual(self.left.sent,  [])
 
     def test_left_hand_routes_to_left(self):
@@ -130,10 +131,12 @@ class RouterBothHandsTests(unittest.TestCase):
         for ev in events:
             self.router.handle_contact(ev)
 
+        # sqrt curve: depth → pot
+        #   0.3 → 116, 0.6 → 73, 0.9 → 40
         # Right should have seen only Thumb events
-        self.assertEqual(self.right.sent, ["C1I163", "C1OFF"])
+        self.assertEqual(self.right.sent, ["C1I116", "C1OFF"])
         # Left should have seen Index + Middle events
-        self.assertEqual(self.left.sent,  ["C2I106", "C3I49", "C2OFF"])
+        self.assertEqual(self.left.sent,  ["C2I73", "C3I40", "C2OFF"])
 
     def test_default_hand_when_missing_is_right(self):
         # Backwards compatibility: payload from an older Unity build with
@@ -257,18 +260,18 @@ class TypingSequenceTest(unittest.TestCase):
                             f"left got unexpected channel: {cmd}")
 
         # Exact stream check.
-        # depth_to_pot: 220 − int(d × 190).
-        # 0.4 → 144,  0.7 → 87,  0.8 → 68.
+        # depth_to_pot: 220 − int(sqrt(d) × 190).
+        #   0.4 → 100,  0.7 → 62,  0.8 → 51.
         self.assertEqual(right.sent, [
-            "C2I144",  # Index ON depth=0.4
+            "C2I100",  # Index ON depth=0.4
             "C2OFF",
-            "C1I87",   # Thumb ON depth=0.7
+            "C1I62",   # Thumb ON depth=0.7
             "C1OFF",
         ])
         self.assertEqual(left.sent, [
-            "C2I144",  # Index ON depth=0.4
+            "C2I100",  # Index ON depth=0.4
             "C2OFF",
-            "C3I68",   # Middle ON depth=0.8
+            "C3I51",   # Middle ON depth=0.8
             "C3OFF",
         ])
 

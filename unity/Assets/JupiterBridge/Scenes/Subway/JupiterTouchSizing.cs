@@ -124,17 +124,19 @@ namespace JupiterBridge.Subway
         public const float PhoneThicknessM = 0.008f;   // 8 mm
         public const float PhoneScreenInsetM = 0.004f; // bezel around screen
 
-        // Local-space offset from the palm bone where the phone parent goes.
-        // The palm bone's orientation depends on OVR's skeleton convention,
-        // so this is an empirical default — adjust if the phone spawns
-        // sideways or floating away from the palm. Local axes:
-        //   x = across the palm (thumb to pinky direction-ish)
-        //   y = up the fingers (toward fingertips)
-        //   z = perpendicular to palm (out of the palm flesh)
-        public static readonly UnityEngine.Vector3 PhonePalmLocalOffset
-            = new UnityEngine.Vector3(0f, 0.04f, 0.025f);
-        public static readonly UnityEngine.Vector3 PhonePalmLocalEuler
-            = new UnityEngine.Vector3(0f, 0f, 0f);
+        // Phone spawns FLOATING in front of the user (not attached to a
+        // hand). User has to physically reach out and wrap fingers around
+        // it to grab. SetParent(palmBone, worldPositionStays:true) preserves
+        // the world pose at the moment of grab so it doesn't teleport out
+        // of the user's grip.
+        public const float PhoneSpawnDistanceM = 0.35f;   // forward of head
+        public const float PhoneSpawnDropM     = -0.15f;  // below head (chest-ish)
+
+        // Grab uses hysteresis: ≥grabFingerCount from one hand to grab,
+        // <releaseFingerCount to release. Prevents flapping when one finger
+        // drifts in/out at the collider boundary.
+        public const int PhoneGrabFingerCount    = 3;
+        public const int PhoneReleaseFingerCount = 2;
 
         // ─── Layers ───────────────────────────────────────────────────────
         public const int EmsContactLayer = 6;

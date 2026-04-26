@@ -39,6 +39,7 @@ Serial commands sent to each Arduino:
 
 import argparse
 import json
+import math
 import socket
 import sys
 import time
@@ -83,9 +84,18 @@ def depth_to_pot(depth: float) -> int:
     Pot semantics: 0 = maximum EMS, 255 = minimum EMS.
     At depth 0 (just touching) we want low stimulation (high pot value).
     At depth 1 (full contact) we want high stimulation (low pot value).
+
+    The mapping uses a sqrt curve, NOT a linear one. Realistic "holding"
+    gestures (e.g. wrapping fingers around a phone body 8 mm thick) only
+    produce contact depths around 0.2–0.4. Linear mapping in that range
+    yields pot values 145–180 — felt as a barely-perceptible buzz. The
+    sqrt curve boosts low-mid depths into the 110–135 range (clearly
+    present) without changing the maximum: deep presses still saturate
+    at MIN_POT_VALUE.
     """
     depth = max(0.0, min(1.0, depth))
-    pot = MAX_POT_VALUE - int(depth * (MAX_POT_VALUE - MIN_POT_VALUE))
+    curved = math.sqrt(depth)
+    pot = MAX_POT_VALUE - int(curved * (MAX_POT_VALUE - MIN_POT_VALUE))
     return pot
 
 

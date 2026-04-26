@@ -178,14 +178,28 @@ namespace JupiterBridge.Subway
                 return;
             }
 
-            // No seat-frame placement — VirtualPhone parents itself to the
-            // user's hand, so the spawn position here is just temporary
-            // until its Start coroutine attaches it.
+            CaptureSeatFrame();
+
+            // Phone spawns FLOATING in front of the user. They reach out and
+            // physically grab it with ≥3 fingers wrapping around the body.
+            // Position is set before AddComponent so the BoxCollider that
+            // VirtualPhone configures in Awake is already in the right place
+            // — avoids spurious triggers at world origin.
+            Vector3 pos = _seatPos
+                + _seatFwd * JupiterTouchSizing.PhoneSpawnDistanceM
+                + Vector3.up * JupiterTouchSizing.PhoneSpawnDropM;
+
             var go = new GameObject("Phone");
+            go.transform.position = pos;
+            // Screen faces the user. VirtualPhone builds its screen on local
+            // +Z, so local +Z must point toward the user — i.e. opposite the
+            // user's forward.
+            go.transform.rotation = Quaternion.LookRotation(-_seatFwd, Vector3.up);
+
             go.AddComponent<VirtualPhone>();
             _spawned.Add(go);
 
-            Debug.Log("[SubwaySceneController] Spawned Phone (will attach to right hand)");
+            Debug.Log($"[SubwaySceneController] Spawned Phone @ {pos} (floating; reach out to grab)");
         }
 
         void ResetSubway()
