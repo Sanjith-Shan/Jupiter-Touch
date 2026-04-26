@@ -5,11 +5,18 @@ using UnityEngine;
 namespace JupiterBridge.Subway
 {
     /// <summary>
-    /// One key on the virtual keyboard. Detects finger penetration via
-    /// Unity trigger events, fires OnKeyPressed once per press cycle (debounced),
-    /// and animates a color flash. EMS feedback is handled automatically by the
-    /// existing FingerContactDetector pipeline because this GameObject lives
-    /// on layer 6 ("EMS Contact").
+    /// One key on the virtual keyboard. Lives on the cube body GameObject
+    /// (so OnTrigger callbacks fire here) and tracks finger penetration via
+    /// FingerContactDetectors that JupiterTester spawns on the user's fingertips.
+    ///
+    /// Press semantics:
+    ///   • Fires when ANY contacting finger's depth crosses pressThreshold.
+    ///   • Hysteresis: re-arms only after depth drops below releaseThreshold.
+    ///   • Multi-finger: chord typing allowed — first finger across the line wins.
+    ///
+    /// Visual feedback:
+    ///   • Rest → Hover (light contact) → Press (deep contact) color lerp.
+    ///   • Y-axis scale-down at full press (mechanical "click" feel).
     /// </summary>
     [RequireComponent(typeof(BoxCollider))]
     public class VirtualKey : MonoBehaviour
@@ -17,25 +24,29 @@ namespace JupiterBridge.Subway
         [Tooltip("Character emitted when the key fires. Use '\\b' for backspace, '\\n' for enter.")]
         public char keyChar = ' ';
 
-        [Tooltip("Optional label shown on the key face. Defaults to keyChar.")]
+        [Tooltip("Optional human-readable label (used for logging only).")]
         public string label = "";
 
-        [Header("Press tuning")]
-        [Tooltip("Depth (0..1, normalized to FingerContactDetector.maxDepthMetres) at which the key fires.")]
-        [Range(0.05f, 1f)] public float pressThreshold = 0.30f;
+        [Header("Press tuning (depth normalized 0..1; FingerContactDetector.maxDepthMetres = 0.03 m)")]
+        [Tooltip("Depth at which the key fires. ~0.30 ≈ 9 mm penetration.")]
+        [Range(0.05f, 1f)] public float pressThreshold   = 0.30f;
 
-        [Tooltip("Depth at which the key re-arms after release.")]
-        [Range(0f, 1f)]    public float releaseThreshold = 0.10f;
+        [Tooltip("Depth at which the key re-arms after release. Must be < pressThreshold.")]
+        [Range(0f, 1f)]    public float releaseThreshold = 0.08f;
 
-        [Header("Visual")]
-        public Color restColor    = new Color(0.10f, 0.10f, 0.12f);
-        public Color pressColor   = new Color(0.30f, 0.65f, 1.00f);
-        public Color labelColor   = new Color(0.92f, 0.92f, 0.95f);
+        [Header("Visual feedback")]
+        public Color restColor   = new Color(0.10f, 0.10f, 0.12f);
+        public Color hoverColor  = new Color(0.18f, 0.20f, 0.30f);
+        public Color pressColor  = new Color(0.30f, 0.65f, 1.00f);
+
+        [Tooltip("Y-axis scale factor at full press (1 = no squash).")]
+        [Range(0.7f, 1f)] public float pressedYScale = 0.85f;
 
         // ── runtime ────────────────────────────────────────────────────────
         readonly HashSet<FingerContactDetector> _contacting = new HashSet<FingerContactDetector>();
         Material _mat;
-        bool _pressed;
+        bool     _pressed;
+        Vector3  _restScale;
 
         public event Action<char> OnKeyPressed;
 
@@ -43,7 +54,7 @@ namespace JupiterBridge.Subway
 
         void Awake()
         {
-            // Make the box collider a trigger so finger trackers slide through
+            // Trigger collider so finger trackers slide through smoothly
             var col = GetComponent<BoxCollider>();
             col.isTrigger = true;
 
@@ -54,42 +65,49 @@ namespace JupiterBridge.Subway
                 _mat = rend.material;
                 ApplyColor(restColor);
             }
+
+            _restScale = transform.localScale;
         }
 
         void OnTriggerEnter(Collider other)
         {
-            var det = other.GetComponent<FingerContactDetector>();
+            // The Rigidbody might be on a parent of the collider, so search up.
+            var det = other.GetComponentInParent<FingerContactDetector>();
             if (det != null) _contacting.Add(det);
         }
 
         void OnTriggerExit(Collider other)
         {
-            var det = other.GetComponent<FingerContactDetector>();
+            var det = other.GetComponentInParent<FingerContactDetector>();
             if (det != null) _contacting.Remove(det);
         }
 
         void Update()
         {
-            if (_contacting.Count == 0)
-            {
-                if (_pressed) _pressed = false;
-                ApplyColor(restColor);
-                return;
-            }
+            // Defensive: prune any detectors that were destroyed
+            _contacting.RemoveWhere(d => d == null);
 
-            // Use the deepest contact across all touching fingers
             float maxDepth = 0f;
             foreach (var det in _contacting)
-            {
-                if (det == null) continue;
                 if (det.ContactDepth > maxDepth) maxDepth = det.ContactDepth;
+
+            // ── Color: Rest → Hover → Press
+            Color target;
+            if (_contacting.Count == 0) target = restColor;
+            else if (maxDepth < releaseThreshold * 0.5f) target = hoverColor;
+            else
+            {
+                float t = Mathf.InverseLerp(0f, pressThreshold, maxDepth);
+                target = Color.Lerp(hoverColor, pressColor, t);
             }
+            ApplyColor(target);
 
-            // Lerp visual color smoothly with depth
-            float t = Mathf.Clamp01(maxDepth / Mathf.Max(0.01f, pressThreshold));
-            ApplyColor(Color.Lerp(restColor, pressColor, t));
+            // ── Scale: directly drive Y by press fraction (snappier than easing)
+            float pressFraction = Mathf.Clamp01(maxDepth / pressThreshold);
+            float yTarget = Mathf.Lerp(_restScale.y, _restScale.y * pressedYScale, pressFraction);
+            transform.localScale = new Vector3(_restScale.x, yTarget, _restScale.z);
 
-            // Press / re-arm
+            // ── Press / re-arm with hysteresis
             if (!_pressed && maxDepth >= pressThreshold)
             {
                 _pressed = true;

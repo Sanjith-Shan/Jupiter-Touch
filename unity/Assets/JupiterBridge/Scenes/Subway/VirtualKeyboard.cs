@@ -5,63 +5,100 @@ using UnityEngine;
 namespace JupiterBridge.Subway
 {
     /// <summary>
-    /// Procedurally builds a floating QWERTY keyboard at this GameObject's
-    /// transform on Start. Each key is a child cube with a VirtualKey + a
-    /// TextMeshPro label, placed on layer 6 so the EMS pipeline picks up
-    /// finger contacts automatically.
+    /// Procedurally builds a full QWERTY keyboard with number row, letter rows,
+    /// and a control row (backspace, space, enter, comma, period). Each key is
+    /// structured as:
     ///
-    /// Spawns a KeyboardController on the same GameObject if one isn't
-    /// already present (singleton).
+    ///   Key_X  (parent transform, no scale)
+    ///   ├── Body  (Cube primitive — scaled to key dimensions, has VirtualKey
+    ///   │         + BoxCollider trigger; lives on layer 6 for EMS pickup)
+    ///   └── Label (TextMeshPro 3D — positioned above the top face, no scale
+    ///              inheritance issues since it's a sibling of Body, not a child)
+    ///
+    /// The keyboard root tilts ~22° toward the user (real keyboards tilt back
+    /// 5-10° and we exaggerate slightly so labels are readable in VR).
     /// </summary>
     public class VirtualKeyboard : MonoBehaviour
     {
-        [Header("Layout")]
-        [Tooltip("Width of one key (metres) — standard real keys are ~0.018 m.")]
-        public float keyWidth     = 0.024f;
-        [Tooltip("Depth (front→back) of one key (metres).")]
-        public float keyDepth     = 0.024f;
-        [Tooltip("Height of the key body (metres). Affects how 'deep' a press is.")]
-        public float keyHeight    = 0.015f;
-        [Tooltip("Gap between adjacent keys (metres).")]
-        public float keyGap       = 0.003f;
+        [Header("Key dimensions (metres)")]
+        [Tooltip("Width and depth of one standard key. 24-30 mm is the VR sweet spot.")]
+        public float keyWidth  = 0.026f;
+        public float keyDepth  = 0.026f;
+        [Tooltip("Height of the key body — affects how 'deep' a press is.")]
+        public float keyHeight = 0.010f;
+        [Tooltip("Gap between adjacent keys (centre-to-centre = keyWidth + keyGap).")]
+        public float keyGap    = 0.005f;
 
         [Header("Layer")]
-        [Tooltip("Unity layer to assign to every key. Must match the 'EMS Contact' layer.")]
-        public int contactLayer   = 6;
+        [Tooltip("Unity layer for keys. Must match the EMS Contact layer (6 in Jupiter Touch).")]
+        public int contactLayer = 6;
+
+        [Header("Visual")]
+        public Color baseplateColor = new Color(0.04f, 0.04f, 0.05f);
+        public Color labelColor     = new Color(0.95f, 0.97f, 1.00f);
+        [Tooltip("World-space scale factor for the label transform. Determines how big letters appear physically.")]
+        public float labelScale     = 0.012f;
+        [Tooltip("TMP fontSize in TMP-units. With labelScale=0.012, fontSize 1.5 ≈ ~14 mm character height.")]
+        public float labelFontSize  = 1.5f;
+
+        [Header("Tilt & anchor")]
+        [Tooltip("Tilt the whole keyboard back by this many degrees (toward user's face).")]
+        public float tiltDegrees = 25f;
 
         [Header("Auto-anchor (camera-relative)")]
-        [Tooltip("If true, on Start the keyboard positions itself relative to the main camera using the offset below. " +
-                 "Useful when the OVR rig doesn't sit at world origin.")]
-        public bool autoAnchorToCamera = true;
+        [Tooltip("On Start, position the keyboard relative to the main camera using the offset below.")]
+        public bool    autoAnchorToCamera = true;
+        [Tooltip("Offset from camera: x = right, y = up, z = forward (metres).")]
+        public Vector3 cameraAnchorOffset = new Vector3(0.00f, -0.35f, 0.45f);
 
-        [Tooltip("Local offset from the camera (right, up, forward) applied if autoAnchorToCamera is on.")]
-        public Vector3 cameraAnchorOffset = new Vector3(0.40f, -0.30f, 0.45f);
+        // ── Layout ───────────────────────────────────────────────────────
+        // Each entry: (label, char, widthMultiplier).  '\b' = backspace, '\n' = enter.
+        struct K { public string s; public char c; public float w; public K(string s, char c, float w=1f){this.s=s; this.c=c; this.w=w;} }
 
-        // ── Layout definition ────────────────────────────────────────────
-        // Each row: list of (label, char). Use '\b' for backspace, '\n' for enter.
-        static readonly (string label, char ch)[][] Rows = new[]
+        static readonly K[][] Rows = new[]
         {
+            // Number row
             new[] {
-                ("Q",'q'),("W",'w'),("E",'e'),("R",'r'),("T",'t'),
-                ("Y",'y'),("U",'u'),("I",'i'),("O",'o'),("P",'p'),
+                new K("1",'1'), new K("2",'2'), new K("3",'3'), new K("4",'4'), new K("5",'5'),
+                new K("6",'6'), new K("7",'7'), new K("8",'8'), new K("9",'9'), new K("0",'0'),
             },
+            // Top letter row
             new[] {
-                ("A",'a'),("S",'s'),("D",'d'),("F",'f'),("G",'g'),
-                ("H",'h'),("J",'j'),("K",'k'),("L",'l'),
+                new K("Q",'q'), new K("W",'w'), new K("E",'e'), new K("R",'r'), new K("T",'t'),
+                new K("Y",'y'), new K("U",'u'), new K("I",'i'), new K("O",'o'), new K("P",'p'),
             },
+            // Home row
             new[] {
-                ("Z",'z'),("X",'x'),("C",'c'),("V",'v'),("B",'b'),("N",'n'),("M",'m'),
+                new K("A",'a'), new K("S",'s'), new K("D",'d'), new K("F",'f'), new K("G",'g'),
+                new K("H",'h'), new K("J",'j'), new K("K",'k'), new K("L",'l'),
+            },
+            // Bottom letter row
+            new[] {
+                new K("Z",'z'), new K("X",'x'), new K("C",'c'), new K("V",'v'),
+                new K("B",'b'), new K("N",'n'), new K("M",'m'),
+                new K(",",','), new K(".",'.'),
+            },
+            // Control row: backspace, space, enter
+            new[] {
+                new K("⌫", '\b', 1.6f),
+                new K("space", ' ', 6.0f),
+                new K("⏎", '\n', 1.6f),
             },
         };
 
-        // ── Internal ─────────────────────────────────────────────────────
+        // ── State ────────────────────────────────────────────────────────
         readonly List<VirtualKey> _keys = new List<VirtualKey>();
+        Shader _litShader;
+
+        // ──────────────────────────────────────────────────────────────────
 
         void Start()
         {
             // Ensure a KeyboardController exists in the scene
             if (KeyboardController.Instance == null)
                 gameObject.AddComponent<KeyboardController>();
+
+            _litShader = ResolveShader();
 
             if (autoAnchorToCamera) AnchorToCamera();
             BuildKeyboard();
@@ -70,160 +107,185 @@ namespace JupiterBridge.Subway
         void AnchorToCamera()
         {
             var cam = Camera.main;
-            if (cam == null)
-            {
-                Debug.LogWarning("[VirtualKeyboard] No main camera — keeping current position.");
-                return;
-            }
+            if (cam == null) return;
 
             Vector3 fwd   = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized;
             if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
-            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized * -1f;
+            // In Unity (left-handed): Cross(up, fwd) = right
+            Vector3 right = Vector3.Cross(Vector3.up, fwd).normalized;
 
-            Vector3 pos = cam.transform.position
+            transform.position = cam.transform.position
                 + right * cameraAnchorOffset.x
                 + Vector3.up * cameraAnchorOffset.y
                 + fwd * cameraAnchorOffset.z;
 
-            transform.position = pos;
-            // Keyboard faces flat (no tilt) by default — face it toward the user
-            transform.rotation = Quaternion.LookRotation(fwd, Vector3.up);
+            // Face the keyboard toward the user, tilted back so labels are readable
+            transform.rotation = Quaternion.LookRotation(fwd, Vector3.up)
+                               * Quaternion.Euler(-tiltDegrees, 0f, 0f);
         }
 
         void BuildKeyboard()
         {
-            // Letter rows: place centered around local (0,0,0)
             float pitchX = keyWidth + keyGap;
             float pitchZ = keyDepth + keyGap;
 
-            for (int r = 0; r < Rows.Length; r++)
+            // Centre the keyboard in front of the user. Z=0 is the centre row;
+            // top row is at +Z, bottom row at -Z (toward the user).
+            int rowCount = Rows.Length;
+
+            for (int r = 0; r < rowCount; r++)
             {
                 var row = Rows[r];
-                float rowWidth = row.Length * pitchX - keyGap;
-                float startX   = -rowWidth * 0.5f + keyWidth * 0.5f;
-                // Top row at +Z (away from user), bottom row at -Z.
-                // Subway scenario: user looking forward along +Z, so "Q" row is farthest.
-                float z = (Rows.Length - 1 - r) * pitchZ - (Rows.Length - 1) * pitchZ * 0.5f;
 
+                // Compute total row width (handles wide keys)
+                float totalW = 0f;
+                for (int c = 0; c < row.Length; c++)
+                    totalW += row[c].w * keyWidth + (c > 0 ? keyGap : 0f);
+
+                // Z position: row 0 (numbers) at the BACK, last row at the FRONT
+                float z = ((rowCount - 1) * 0.5f - r) * pitchZ;
+
+                // Build keys left-to-right
+                float cursorX = -totalW * 0.5f;
                 for (int c = 0; c < row.Length; c++)
                 {
-                    float x = startX + c * pitchX;
-                    SpawnKey(row[c].label, row[c].ch,
-                        new Vector3(x, 0, z),
-                        new Vector3(keyWidth, keyHeight, keyDepth));
+                    float keyW = row[c].w * keyWidth;
+                    float xCenter = cursorX + keyW * 0.5f;
+
+                    SpawnKey(row[c].s, row[c].c, xCenter, z, keyW);
+
+                    cursorX += keyW + keyGap;
                 }
             }
 
-            // Bottom row: backspace (left), space (centered, wide), enter (right)
-            float bottomZ = (Rows.Length) * pitchZ - (Rows.Length - 1) * pitchZ * 0.5f;
-            bottomZ = -bottomZ;  // one row below the Z row
-
-            float spaceWidth = keyWidth * 5f + keyGap * 4f;
-            float wideKeyW   = keyWidth * 1.6f;
-
-            SpawnKey("⌫",  '\b',
-                new Vector3(-spaceWidth * 0.5f - keyGap - wideKeyW * 0.5f, 0, bottomZ),
-                new Vector3(wideKeyW, keyHeight, keyDepth));
-
-            SpawnKey("space", ' ',
-                new Vector3(0, 0, bottomZ),
-                new Vector3(spaceWidth, keyHeight, keyDepth));
-
-            SpawnKey("⏎",   '\n',
-                new Vector3(spaceWidth * 0.5f + keyGap + wideKeyW * 0.5f, 0, bottomZ),
-                new Vector3(wideKeyW, keyHeight, keyDepth));
-
-            // Optional base plate so the keyboard reads as a unit
-            BuildBasePlate(pitchX, pitchZ, bottomZ);
+            BuildBasePlate();
 
             Debug.Log($"[VirtualKeyboard] Built {_keys.Count} keys");
         }
 
-        void SpawnKey(string label, char ch, Vector3 localPos, Vector3 size)
+        void SpawnKey(string label, char ch, float x, float z, float width)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = $"Key_{label}";
-            go.layer = contactLayer;
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = localPos;
-            go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale    = size;
+            // ── Parent (transform only, no scale)
+            var keyParent = new GameObject($"Key_{NormalizeName(label)}");
+            keyParent.transform.SetParent(transform, false);
+            keyParent.transform.localPosition = new Vector3(x, 0f, z);
+            keyParent.transform.localRotation = Quaternion.identity;
 
-            // Replace the default material with an unlit dark material
-            var rend = go.GetComponent<Renderer>();
-            rend.material = MakeDarkMaterial();
+            // ── Body (cube, scaled, has VirtualKey + collider)
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "Body";
+            body.layer = contactLayer;
+            body.transform.SetParent(keyParent.transform, false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localScale    = new Vector3(width, keyHeight, keyDepth);
+            body.GetComponent<Renderer>().material = MakeKeyMaterial();
 
-            // VirtualKey component
-            var key = go.AddComponent<VirtualKey>();
+            var key = body.AddComponent<VirtualKey>();
             key.keyChar = ch;
             key.label   = label;
             _keys.Add(key);
 
-            // Label on top face
-            BuildLabel(go.transform, label, size);
-        }
-
-        void BuildLabel(Transform parent, string text, Vector3 keySize)
-        {
+            // ── Label (TMP 3D, sibling of body — no inherited scale)
             var labelGo = new GameObject("Label");
-            labelGo.transform.SetParent(parent, false);
-            // Position slightly above the top face so it doesn't z-fight
-            labelGo.transform.localPosition = new Vector3(0, 0.51f, 0);
-            // Lay flat: rotate so X faces forward when looking down
-            labelGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            // Scale invariant of parent's non-uniform scale: counter-scale
-            labelGo.transform.localScale = new Vector3(
-                1f / Mathf.Max(0.001f, keySize.x),
-                1f / Mathf.Max(0.001f, keySize.y),
-                1f / Mathf.Max(0.001f, keySize.z)
-            );
+            labelGo.transform.SetParent(keyParent.transform, false);
+            // Position just above the top face of the body
+            labelGo.transform.localPosition = new Vector3(0f, keyHeight * 0.5f + 0.0008f, 0f);
+            // Rotate so the text faces UP and reads correctly when viewed from above
+            labelGo.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            // Uniform scale: world-space sizing in metres = TMP-units × labelScale
+            labelGo.transform.localScale = Vector3.one * labelScale;
 
             var tmp = labelGo.AddComponent<TextMeshPro>();
-            tmp.text = text;
-            tmp.alignment = TextAlignmentOptions.Center;
-            // The world-space size is now 1 unit per axis; pick a font size that fits
-            tmp.fontSize = 0.5f * Mathf.Min(keySize.x, keySize.z) * 200f;
-            tmp.color = new Color(0.92f, 0.92f, 0.95f);
-            tmp.enableWordWrapping = false;
-            tmp.rectTransform.sizeDelta = new Vector2(0.9f, 0.9f);
+            tmp.text             = label;
+            tmp.alignment        = TextAlignmentOptions.Center;
+            tmp.color            = labelColor;
+            tmp.fontStyle        = FontStyles.Bold;
+            tmp.enableAutoSizing = true;
+            tmp.fontSizeMin      = 0.5f;
+            tmp.fontSizeMax      = labelFontSize;
+            // sizeDelta is in TMP-space units; convert from world-space dimensions
+            tmp.rectTransform.sizeDelta = new Vector2(
+                (width    / labelScale) * 0.95f,
+                (keyDepth / labelScale) * 0.95f);
         }
 
-        void BuildBasePlate(float pitchX, float pitchZ, float bottomZ)
+        void BuildBasePlate()
         {
-            float topZ      = (Rows.Length - 1) * pitchZ * 0.5f + pitchZ * 0.5f;
-            float plateZMin = bottomZ - pitchZ * 0.6f;
-            float plateZMax = topZ + pitchZ * 0.1f;
-            float plateW    = 12 * keyWidth + 11 * keyGap + keyWidth * 0.4f;
-            float plateD    = plateZMax - plateZMin;
+            // Compute the full footprint of all keys
+            float maxRowWidth = 0f;
+            for (int r = 0; r < Rows.Length; r++)
+            {
+                var row = Rows[r];
+                float w = 0f;
+                for (int c = 0; c < row.Length; c++)
+                    w += row[c].w * keyWidth + (c > 0 ? keyGap : 0f);
+                if (w > maxRowWidth) maxRowWidth = w;
+            }
+
+            float plateW = maxRowWidth + keyWidth * 0.4f;
+            float plateD = Rows.Length * (keyDepth + keyGap) + keyWidth * 0.3f;
 
             var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            plate.name = "BasePlate";
-            plate.layer = 0;  // not on EMS layer — purely cosmetic
-            // Strip the box collider so it doesn't interfere with finger tracking
-            Destroy(plate.GetComponent<BoxCollider>());
+            plate.name  = "BasePlate";
+            plate.layer = 0;  // not on EMS layer — purely visual
+            Destroy(plate.GetComponent<BoxCollider>());  // strip collider so finger tracking ignores it
             plate.transform.SetParent(transform, false);
-            plate.transform.localPosition = new Vector3(0, -keyHeight * 0.5f - 0.004f, (plateZMin + plateZMax) * 0.5f);
-            plate.transform.localScale    = new Vector3(plateW, 0.006f, plateD);
+            plate.transform.localPosition = new Vector3(0f, -keyHeight * 0.5f - 0.003f, 0f);
+            plate.transform.localScale    = new Vector3(plateW, 0.005f, plateD);
 
-            var rend = plate.GetComponent<Renderer>();
-            var mat = MakeDarkMaterial();
-            mat.color = new Color(0.05f, 0.05f, 0.06f);
-            rend.material = mat;
+            var mat = MakeMaterial(baseplateColor);
+            plate.GetComponent<Renderer>().material = mat;
         }
 
-        Material MakeDarkMaterial()
+        // ── Materials ────────────────────────────────────────────────────
+
+        Material MakeKeyMaterial()
         {
-            // Try URP Lit first, then Standard, then Mobile/Diffuse
-            string[] candidates = {
-                "Universal Render Pipeline/Lit", "Standard", "Mobile/Diffuse", "Unlit/Color"
-            };
-            Shader sh = null;
-            foreach (var n in candidates) { sh = Shader.Find(n); if (sh != null) break; }
-            var mat = new Material(sh);
+            // Use a fresh material per key so each one can flash independently
             var c = new Color(0.10f, 0.10f, 0.12f);
+            return MakeMaterial(c);
+        }
+
+        Material MakeMaterial(Color c)
+        {
+            var mat = new Material(_litShader);
             mat.color = c;
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
             return mat;
+        }
+
+        Shader ResolveShader()
+        {
+            string[] candidates = {
+                "Universal Render Pipeline/Lit",
+                "Standard",
+                "Mobile/Diffuse",
+                "Unlit/Color",
+            };
+            foreach (var n in candidates)
+            {
+                var sh = Shader.Find(n);
+                if (sh != null) return sh;
+            }
+            // Last resort: pull from a temp primitive
+            var tmp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var s = tmp.GetComponent<Renderer>().sharedMaterial.shader;
+            Destroy(tmp);
+            return s;
+        }
+
+        // Replace special chars in GameObject names so they look clean in the Hierarchy
+        static string NormalizeName(string s)
+        {
+            switch (s)
+            {
+                case "⌫": return "Backspace";
+                case "⏎": return "Enter";
+                case "space": return "Space";
+                case ",": return "Comma";
+                case ".": return "Period";
+                default: return s;
+            }
         }
     }
 }
