@@ -21,7 +21,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Serialization;
-using JupiterBridge.Subway;  // JupiterTouchSizing lives here
+using JupiterBridge.Subway;   // JupiterTouchSizing lives here
+using JupiterBridge.Director; // DirectorRouter.OnEventTrigger
 
 namespace JupiterBridge.Tests
 {
@@ -169,9 +170,39 @@ namespace JupiterBridge.Tests
         private float[] _lastSentDepth = new float[6];
         private float   _emsSendTimer;
 
+        // Status panel — populated either at Start (if buildStatusPanel is
+        // checked) or on demand via the dashboard "spawn_panels" event.
+        private GameObject _statusPanelGo;
+
         private const int ContactLayer = 6;
 
         // ══════════════════════════════════════════════════════════════════
+
+        void OnEnable()
+        {
+            // Listen for dashboard events (currently only "spawn_panels"
+            // for the per-finger HUD). Both JupiterTester instances —
+            // right and left — receive the same event and each spawn
+            // their own hand's panel independently.
+            DirectorRouter.OnEventTrigger += HandleDirectorEvent;
+        }
+
+        void OnDisable()
+        {
+            DirectorRouter.OnEventTrigger -= HandleDirectorEvent;
+        }
+
+        void HandleDirectorEvent(DirectorRouter.EventTriggerMsg msg)
+        {
+            switch (msg.id)
+            {
+                case "spawn_panels":
+                    // Idempotent: re-clicks while a panel already exists
+                    // are a silent no-op.
+                    if (_statusPanelGo == null) BuildStatusPanel();
+                    break;
+            }
+        }
 
         void Start()
         {
@@ -196,7 +227,7 @@ namespace JupiterBridge.Tests
             Vector3 headRight = Vector3.Cross(Vector3.up, headFwd).normalized * -1f;
 
             if (buildTestScene)  BuildTestScene(headPos, headFwd, headRight);
-            if (buildStatusPanel) BuildStatusPanel(headPos, headFwd, headRight);
+            if (buildStatusPanel) BuildStatusPanel();
 
             yield return StartCoroutine(BindBones());
 
@@ -775,21 +806,50 @@ namespace JupiterBridge.Tests
             }
         }
 
-        void BuildStatusPanel(Vector3 headPos, Vector3 headFwd, Vector3 headRight)
+        /// <summary>
+        /// Spawn the per-finger HUD panel for THIS hand. Idempotent — a
+        /// second call while one already exists is a silent no-op.
+        ///
+        /// Computes the head frame internally (Camera.main + horizontal
+        /// projection), so it's safe to call at any time during runtime —
+        /// either at startup via the buildStatusPanel field, or on demand
+        /// via the dashboard "spawn_panels" event. The panel anchors to
+        /// the user's CURRENT head position, not whatever it was at app
+        /// launch, which matters when the user has moved.
+        /// </summary>
+        void BuildStatusPanel()
         {
-            // The `headRight` arg passed in is actually the user-LEFT vector
-            // (it's Cross(up,fwd)*-1 — see InitScene). So `headRight * -0.35`
-            // puts the panel on the user's RIGHT side. For the left hand we
-            // want the panel on the user's LEFT side, hence flipping the sign.
+            if (_statusPanelGo != null) return;  // already exists for this hand
+
+            Camera cam = Camera.main;
+            Vector3 headPos = cam != null ? cam.transform.position : new Vector3(0, 1.5f, 0);
+            Vector3 headFwd = cam != null
+                ? Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized
+                : Vector3.forward;
+            if (headFwd.sqrMagnitude < 0.01f) headFwd = Vector3.forward;
+            // headRightLike here is actually the user-LEFT direction
+            // (Cross(up,fwd)*-1) — see InitScene's variable of the same name.
+            Vector3 headRightLike = Vector3.Cross(Vector3.up, headFwd).normalized * -1f;
+
+            // Right hand panel goes on the user's right side; left hand on
+            // the left. Sign flip compensates for headRightLike pointing
+            // user-LEFT.
             float lateralSign = (handedness == Handedness.Right) ? -1f : +1f;
-            Vector3 pos = headPos + headFwd * 0.50f + headRight * (0.35f * lateralSign) + Vector3.up * 0.10f;
+            Vector3 pos = headPos
+                + headFwd * 0.50f
+                + headRightLike * (0.35f * lateralSign)
+                + Vector3.up * 0.10f;
+
             var go = new GameObject($"FingerStatusPanel_{handedness}");
             go.transform.SetParent(transform);
             var panel = go.AddComponent<FingerStatusPanel>();
-            panel.tester = this;
-            panel.spawnPos = pos;
-            panel.spawnFwd = headFwd;
+            panel.tester    = this;
+            panel.spawnPos  = pos;
+            panel.spawnFwd  = headFwd;
             panel.handLabel = (handedness == Handedness.Right) ? "RIGHT HAND" : "LEFT HAND";
+            _statusPanelGo  = go;
+
+            Debug.Log($"[JupiterTester:{handedness}] Spawned status panel @ {pos}");
         }
     }
 }

@@ -22,6 +22,10 @@ const EVENTS = [
   { id: "spawn_monitors", label: "Spawn Monitors",  scope: "DemoRoom_Subway" },
   { id: "spawn_keyboard", label: "Spawn Keyboard",  scope: "DemoRoom_Subway" },
   { id: "spawn_phone",    label: "Spawn Phone",     scope: "DemoRoom_Subway" },
+  // No scope on this one — the per-hand HUD panels live in Bootstrap
+  // (persistent across scene swaps), so the button should be enabled
+  // regardless of which scene is active.
+  { id: "spawn_panels",   label: "Spawn HUD Panels" },
   { id: "reset_subway",   label: "Reset Subway",    scope: "DemoRoom_Subway", danger: true },
 ];
 
