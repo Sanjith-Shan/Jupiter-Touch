@@ -1,4 +1,4 @@
-# Jupiter Touch
+# Jupiter
 
 **Per-finger haptic feedback for VR, through electrical muscle stimulation.**
 
